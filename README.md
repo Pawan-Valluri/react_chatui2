@@ -15,7 +15,7 @@ sequenceDiagram
     autonumber
     actor Browser as Chrome/Firefox
     participant FE as Frontend Client (Port :5173)
-    participant BE as Backend API Server (Port :8000)
+    participant BE as Backend API Server (Port :8080)
     participant Sim as SSO Simulator (Port :5001)
 
     Browser->>FE: Access Client Workspace
@@ -86,7 +86,7 @@ python -m uvicorn main:app --port 5001 --reload
 The API server hosts thread persistence and the LangGraph conversational graph.
 ```bash
 cd backend
-python -m uvicorn main:app --port 8000 --reload
+python -m uvicorn main:app --port 8080 --reload
 ```
 
 ### 3. Start the React Frontend Client

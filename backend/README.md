@@ -54,6 +54,6 @@ Make sure you have installed standard backend dependencies inside your Python en
 # Inside the backend folder
 pip install -r requirements.txt
 
-# Run the API server on port 8000
-python -m uvicorn main:app --port 8000 --reload
+# Run the API server on port 8080
+python -m uvicorn main:app --port 8080 --reload
 ```

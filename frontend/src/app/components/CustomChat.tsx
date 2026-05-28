@@ -90,6 +90,7 @@ interface CustomChatProps {
   initialMessages: any[];
   pendingPrompt: string | null;
   onClearPendingPrompt: () => void;
+  onThreadUpdated?: () => void;
 }
 
 // --------------------------------------------------------------------------
@@ -584,7 +585,8 @@ export const CustomChat: React.FC<CustomChatProps> = ({
   threadId, 
   initialMessages,
   pendingPrompt,
-  onClearPendingPrompt
+  onClearPendingPrompt,
+  onThreadUpdated
 }) => {
   // Freeze initialMessages inside local state to block reactive resets from parent re-renders
   const [frozenMessages] = useState(() => initialMessages);
@@ -627,6 +629,10 @@ export const CustomChat: React.FC<CustomChatProps> = ({
 
       if (!response.ok) {
         throw new Error("Failed to send message to APCOT Chat API");
+      }
+
+      if (onThreadUpdated) {
+        onThreadUpdated();
       }
 
       const reader = response.body?.getReader();

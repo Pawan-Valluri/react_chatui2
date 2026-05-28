@@ -233,6 +233,7 @@ export function App({ config }: AppProps = {}) {
         onClearPendingPrompt={() => setPendingPrompt(null)}
         theme={theme}
         onToggleTheme={handleToggleTheme}
+        onThreadUpdated={fetchThreads}
       />
     </div>
   );

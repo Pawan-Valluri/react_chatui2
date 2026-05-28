@@ -18,6 +18,7 @@ interface ChatAreaProps {
   onClearPendingPrompt: () => void;
   theme: "light" | "dark";
   onToggleTheme: () => void;
+  onThreadUpdated?: () => void;
 }
 
 export const ChatArea: React.FC<ChatAreaProps> = ({
@@ -28,7 +29,8 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
   pendingPrompt,
   onClearPendingPrompt,
   theme,
-  onToggleTheme
+  onToggleTheme,
+  onThreadUpdated
 }) => {
   const activeThread = threads.find(t => t.id === currentThreadId);
 
@@ -67,6 +69,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
           initialMessages={currentThreadMessages} 
           pendingPrompt={pendingPrompt}
           onClearPendingPrompt={onClearPendingPrompt}
+          onThreadUpdated={onThreadUpdated}
         />
       )}
     </main>

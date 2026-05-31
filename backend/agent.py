@@ -1,103 +1,124 @@
-from typing import Annotated, List, TypedDict, Any
-import asyncio
+# backend/agent.py
+
+from typing import Annotated, List, TypedDict, Any, Literal
+from langchain_core.tools import tool
+from langchain_core.language_models import BaseChatModel
+from langchain_core.messages import BaseMessage, AIMessage, HumanMessage, ToolMessage
 from langgraph.graph import StateGraph, START, END
+from langgraph.graph.message import add_messages
+from langgraph.prebuilt import ToolNode
 
-# Define agent state structure
+# Define clean enterprise Agent State structure
 class AgentState(TypedDict):
-    input_text: str
-    reasoning_steps: List[str]
-    tool_calls: List[dict]
-    response_text: str
-    current_node: str
+    messages: Annotated[List[BaseMessage], add_messages]
+    reasoning_steps: List[str]  # Tracks the consecutive reasoning thoughts
+    loop_counter: int           # Safety guardrail counter
 
-# Define nodes for the LangGraph state machine
-async def thinking_node(state: AgentState) -> dict:
-    # Simulate thinking delay
-    await asyncio.sleep(0.1)
-    reasoning = [
-        "Analyzing prompt and checking workspace requirements...",
-        "Identifying UI guidelines in 'ui-project-bootstrap-guidelines.md'...",
-        "Synthesizing response for APCOT Chat interface..."
-    ]
-    return {
-        "reasoning_steps": reasoning,
-        "current_node": "thinking"
-    }
+# ──────────────────────────────────────────────────────────────────────────
+# 🛠️ Define Clean Native Production Tools
+# ──────────────────────────────────────────────────────────────────────────
 
-async def tool_node(state: AgentState) -> dict:
-    input_lower = state["input_text"].lower()
-    tool_calls = []
-    
-    # Check if prompt triggers our dummy search tool
-    if any(keyword in input_lower for keyword in ["search", "kb", "knowledge", "help", "guide", "info", "apcot"]):
-        await asyncio.sleep(0.1)
-        # Add a simulated tool call
-        tool_calls.append({
-            "toolCallId": "tc_kb_search_1",
-            "toolName": "search_kb",
-            "args": {"query": state["input_text"]},
-            "status": "running"
-        })
-        # Simulate tool execution delay
-        await asyncio.sleep(0.2)
-        tool_calls[0]["status"] = "complete"
-        tool_calls[0]["result"] = (
-            "Knowledge Base Found: 'APCOT Chat' is a premium web client utilizing "
-            "@assistant-ui/react primitives styled completely via Vanilla CSS (Tailwind-free) "
-            "complying with modular component-tree encapsulation design principles."
-        )
-    
-    return {
-        "tool_calls": tool_calls,
-        "current_node": "tool"
-    }
+@tool
+def think(thought: str) -> str:
+    """Use this tool to record consecutive thoughts, plans, or silent reasoning steps.
+    This enables breaking down complex prompts before executing tools or responding.
+    """
+    return "Thought recorded."
 
-async def generation_node(state: AgentState) -> dict:
-    input_text = state["input_text"]
-    input_lower = input_text.lower()
+@tool
+async def search_kb(query: str) -> str:
+    """Search the corporate Knowledge Base for APCOT Chat system specifications, vanilla CSS design principles, and guidelines."""
+    return (
+        "Knowledge Base Found: 'APCOT Chat' is a premium web client utilizing "
+        "@assistant-ui/react primitives styled completely via Vanilla CSS (Tailwind-free) "
+        "complying with modular component-tree encapsulation design principles."
+    )
+
+@tool
+async def check_entitlements(resource: str) -> str:
+    """Check group entitlements and access permissions for the current resource."""
+    return (
+        "AUTHORIZED: User is a member of 'SSO_APP_ADMIN'. "
+        "Granted full administration, thread deletion, and query permissions."
+    )
+
+# ──────────────────────────────────────────────────────────────────────────
+# 🔀 The Dynamic Conditional Router
+# ──────────────────────────────────────────────────────────────────────────
+
+def evaluate_agent_step(state: AgentState) -> Literal["agent", "tools", "__end__"]:
+    # Loop safety guardrail to prevent infinite billing recursion
+    if state.get("loop_counter", 0) >= 12:
+        print("Loop Safety Guardrail triggered: forcing termination.")
+        return END
+
+    last_message = state["messages"][-1]
+
+    # If the last message contains no tool calls, we have our final response!
+    if not last_message.tool_calls:
+        return END
+
+    # Check if the LLM called the virtual 'think' tool
+    is_thinking = any(tc["name"] == "think" for tc in last_message.tool_calls)
+    if is_thinking:
+        return "agent"  # Loops back to agent_node for consecutive thought steps
+
+    return "tools"      # Routes to native ToolNode for system execution
+
+# ──────────────────────────────────────────────────────────────────────────
+# 🏗️ State Machine Factory
+# ──────────────────────────────────────────────────────────────────────────
+
+def create_agent_graph(llm: BaseChatModel, tools: List[Any] = None):
+    """Compiles the pristine production LangGraph using a polymorphic LLM dependency."""
     
-    # Select appropriate response text
-    if any(keyword in input_lower for keyword in ["search", "kb", "knowledge", "help", "guide", "info", "apcot"]):
-        response = (
-            "Hello! I ran a search in our Knowledge Base concerning **APCOT Chat**. "
-            "Based on the results, the system has successfully booted in a standard "
-            "Vite, React, and TypeScript environment. The layout uses pure Vanilla CSS "
-            "with a customizable sidebar, active reasoning UI, and tool usage visualization. "
-            "Everything is fully modular and ready for external integration! How would you like "
-            "to proceed with the implementation?"
-        )
-    elif "hello" in input_lower or "hi" in input_lower:
-        response = (
-            "Hello there! I am **APCOT Chat**, your dynamic AI assistant built with `@assistant-ui/react` "
-            "and Vanilla CSS. I can answer your questions, demonstrate tool usage, and show you "
-            "my step-by-step thinking reasoning traces. What can I do for you today?"
-        )
-    else:
-        response = (
-            f"Thank you for your message: \"{input_text}\". I have processed your input through my "
-            "LangGraph state machine! You can see my thought traces (reasoning) and tool execution cards "
-            "above. If you ask me to 'search the knowledge base', I can execute a simulated database tool "
-            "for you. Let me know how I can help!"
-        )
+    # 1. Default to core native production tools if none are passed
+    if tools is None:
+        tools = [think, search_kb, check_entitlements]
         
-    return {
-        "response_text": response,
-        "current_node": "generation"
-    }
+    llm_with_tools = llm.bind_tools(tools)
 
-# Build LangGraph workflow
-workflow = StateGraph(AgentState)
+    # 2. Define the Agent thinking node
+    async def agent_node(state: AgentState) -> dict:
+        # Log previous messages to console to test correct branching
+        print(f"\n--- [AGENT GRAPH RUN] Dynamic Message Context (Count: {len(state['messages'])}) ---")
+        for idx, msg in enumerate(state["messages"]):
+            role = "USER" if msg.type == "human" else ("TOOL" if msg.type == "tool" else "ASSISTANT")
+            details = ""
+            if msg.type == "ai" and msg.tool_calls:
+                details = f" [ToolCalls: {[tc['name'] for tc in msg.tool_calls]}]"
+            elif msg.type == "tool":
+                details = f" [ToolName: {msg.name}, Status: complete]"
+            snippet = msg.content[:90] if isinstance(msg.content, str) else str(msg.content)[:90]
+            print(f"  [{idx}] {role}: {snippet}{details}")
+        print("--------------------------------------------------------------------\n")
 
-# Add nodes
-workflow.add_node("thinking", thinking_node)
-workflow.add_node("tool", tool_node)
-workflow.add_node("generation", generation_node)
+        # Invoke LLM
+        response = await llm_with_tools.ainvoke(state["messages"])
+        
+        # Extract and compile reasoning steps
+        new_reasoning = list(state.get("reasoning_steps", []))
+        if response.tool_calls:
+            for tc in response.tool_calls:
+                if tc["name"] == "think":
+                    new_reasoning.append(tc["args"]["thought"])
 
-# Set up edges
-workflow.add_edge(START, "thinking")
-workflow.add_edge("thinking", "tool")
-workflow.add_edge("tool", "generation")
-workflow.add_edge("generation", END)
+        return {
+            "messages": [response],
+            "reasoning_steps": new_reasoning,
+            "loop_counter": state.get("loop_counter", 0) + 1
+        }
 
-# Compile graph
-agent_graph = workflow.compile()
+    # 3. Compile workflow
+    workflow = StateGraph(AgentState)
+    
+    # Add nodes
+    workflow.add_node("agent", agent_node)
+    workflow.add_node("tools", ToolNode(tools))
+    
+    # Add edges
+    workflow.add_edge(START, "agent")
+    workflow.add_conditional_edges("agent", evaluate_agent_step, ["agent", "tools", END])
+    workflow.add_edge("tools", "agent")
+    
+    return workflow.compile()

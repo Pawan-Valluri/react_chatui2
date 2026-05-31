@@ -1,6 +1,7 @@
 import React from "react";
 import { CustomChat } from "./CustomChat";
-import { Sun, Moon, Loader2, Sparkles } from "lucide-react";
+import { Sun, Moon, Sparkles } from "lucide-react";
+import { Mirage } from "./loaders";
 
 interface Thread {
   id: string;
@@ -19,6 +20,7 @@ interface ChatAreaProps {
   theme: "light" | "dark";
   onToggleTheme: () => void;
   onThreadUpdated?: () => void;
+  starterPrompts?: any[];
 }
 
 export const ChatArea: React.FC<ChatAreaProps> = ({
@@ -30,7 +32,8 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
   onClearPendingPrompt,
   theme,
   onToggleTheme,
-  onThreadUpdated
+  onThreadUpdated,
+  starterPrompts
 }) => {
   const activeThread = threads.find(t => t.id === currentThreadId);
 
@@ -58,9 +61,9 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
 
       {/* Main viewport area */}
       {isLoadingMessages ? (
-        <div style={{ display: "flex", flexDirection: "column", flex: 1, alignItems: "center", justifyContent: "center", height: "100%", color: "var(--text-muted)", gap: "12px" }}>
-          <Loader2 className="apcot-spinner" size={24} style={{ color: "var(--accent-light)" }} />
-          <span style={{ fontSize: "0.85rem", letterSpacing: "0.2px" }}>Loading messages...</span>
+        <div style={{ display: "flex", flexDirection: "column", flex: 1, alignItems: "center", justifyContent: "center", height: "100%", color: "var(--text-muted)", gap: "16px" }}>
+          <Mirage size={45} color="var(--accent-light)" speed={2.2} />
+          <span style={{ fontSize: "0.85rem", letterSpacing: "0.2px", marginTop: "4px" }}>Loading messages...</span>
         </div>
       ) : !currentThreadId ? (
         <div style={{ display: "flex", flexDirection: "column", flex: 1, alignItems: "center", justifyContent: "center", height: "100%", color: "var(--text-muted)", gap: "16px", padding: "20px", textAlign: "center" }}>
@@ -79,6 +82,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
           pendingPrompt={pendingPrompt}
           onClearPendingPrompt={onClearPendingPrompt}
           onThreadUpdated={onThreadUpdated}
+          starterPrompts={starterPrompts}
         />
       )}
     </main>

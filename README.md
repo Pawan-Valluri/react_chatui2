@@ -68,25 +68,36 @@ The codebase is organized into highly modular, decoupled components to enforce s
     └── README.md                       # SSO simulation details
 ```
 
+## 🚀 Configuration & Execution
+
+You can configure and start all services using simplified commands.
+
+### ⚙️ Optional Shared Configuration (`config.json`)
+You can optionally place a `config.json` file in the root workspace folder to override default ports and options for all three layers:
+```json
+{
+  "BACKEND_PORT": 8080,
+  "AUTHBLUE_PORT": 5001,
+  "FRONTEND_PORT": 5173,
+  "ENABLE_SSO": true
+}
+```
+All layers will automatically detect this file and fall back to their built-in defaults if it is omitted.
+
 ---
 
-## 🚀 Quick Start (Local Run Guide)
-
-Follow these steps to run the complete workspace locally. You will need a standard Python 3.11+ environment and Node.js.
+## 🏃‍♂️ Quick Start Guide
 
 ### 1. Launch the AuthBlue SSO Simulator
-The simulator generates a browser-wide cookie session representing your authenticated intranet user.
 ```bash
 cd authblue-simulator
-# Use your active Python environment to launch the Uvicorn server
-python -m uvicorn main:app --port 5001 --reload
+python main.py
 ```
 
 ### 2. Start the Backend API Server
-The API server hosts thread persistence and the LangGraph conversational graph.
 ```bash
 cd backend
-python -m uvicorn main:app --port 8080 --reload
+python main.py
 ```
 
 ### 3. Start the React Frontend Client
@@ -97,8 +108,8 @@ npm run dev
 ```
 
 ### 4. Verification Flow
-1. Navigate to **`http://localhost:5173/`** in your browser.
-2. The frontend will detect a missing session and redirect you to the **AuthBlue Simulator** page on `http://localhost:5001/login`.
-3. Choose one of the quick-login corporate profiles (e.g. **Charles Frost**) or enter a custom ADs ID.
-4. You will be authenticated, redirected back to the chat client, and see your customized profile initialized in the sidebar footer.
-5. Create conversations and observe the live, expandable thought traces and tool executions streaming directly from the LangGraph backend!
+1. Navigate to your frontend port (defaults to **`http://localhost:5173/`**).
+2. The frontend will detect a missing session and redirect you to the **AuthBlue Simulator** login page.
+3. Choose one of the quick-login corporate profiles or enter a custom ADs ID.
+4. You will be authenticated, redirected back to the chat client, and see your profile active in the sidebar footer.
+5. Send messages to view real-time expandable thought traces and tool executions streaming directly from the LangGraph backend!

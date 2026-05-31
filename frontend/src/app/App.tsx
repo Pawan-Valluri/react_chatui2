@@ -26,6 +26,7 @@ export function App({ config }: AppProps = {}) {
   const [pendingPrompt, setPendingPrompt] = useState<string | null>(null);
   const [userProfile, setUserProfile] = useState<any | null>(null);
   const [isAuthenticating, setIsAuthenticating] = useState(true);
+  const [starterPrompts, setStarterPrompts] = useState<any[]>([]);
   const [theme, setTheme] = useState<"light" | "dark">(() => {
     const saved = localStorage.getItem("apcot-theme");
     return saved === "light" || saved === "dark" ? saved : "dark";
@@ -59,6 +60,18 @@ export function App({ config }: AppProps = {}) {
     checkSession();
   }, []);
 
+  const fetchStarterPrompts = async () => {
+    try {
+      const res = await fetch("/api/starter-prompts");
+      if (res.ok) {
+        const data = await res.json();
+        setStarterPrompts(data);
+      }
+    } catch (err) {
+      console.error("Error fetching starter prompts:", err);
+    }
+  };
+
   const checkSession = async () => {
     try {
       const res = await fetch("/v1/user/userinfo");
@@ -68,6 +81,7 @@ export function App({ config }: AppProps = {}) {
         setIsAuthenticating(false);
         // Load threads once authenticated
         fetchThreads();
+        fetchStarterPrompts();
       } else if (res.status === 401) {
         if (enableSSO) {
           // Redirect browser to AuthBlue SSO login page
@@ -79,6 +93,24 @@ export function App({ config }: AppProps = {}) {
             fullname: "Beyond Developer",
             email: "beyond.developer@aexp.com"
           });
+          setStarterPrompts([
+            {
+              title: "Help & Guidelines",
+              prompt: "Can you list the guidelines in 'ui-project-bootstrap-guidelines.md'?"
+            },
+            {
+              title: "Knowledge Base Lookup",
+              prompt: "Search the knowledge base for APCOT Chat information"
+            },
+            {
+              title: "State Machine Demo",
+              prompt: "Show me a demo of your LangGraph thinking and tool executing cycles!"
+            },
+            {
+              title: "Aesthetics Showcase",
+              prompt: "Explain how your dark mode glassmorphic UI is styled without Tailwind CSS"
+            }
+          ]);
           setIsAuthenticating(false);
           fetchThreads();
         }
@@ -242,6 +274,7 @@ export function App({ config }: AppProps = {}) {
         theme={theme}
         onToggleTheme={handleToggleTheme}
         onThreadUpdated={fetchThreads}
+        starterPrompts={starterPrompts}
       />
     </div>
   );

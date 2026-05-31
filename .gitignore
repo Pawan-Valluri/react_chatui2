@@ -52,6 +52,5 @@ backend/apcot_chat.db
 *.sw?
 
 # Intranet Guidelines & Specifications
-ab_sso.md
-ui-project-bootstrap-guidelines.md
+labs/
 

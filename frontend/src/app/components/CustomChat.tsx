@@ -17,10 +17,10 @@ import {
   BrainIcon, 
   ChevronDownIcon, 
   CpuIcon, 
-  LoaderIcon, 
   CheckIcon,
   SparklesIcon
 } from "./Icons";
+import { Mirage } from "./loaders";
 
 // Custom inline SVGs for editing and branching
 const PencilIcon = (props: React.SVGProps<SVGSVGElement>) => (
@@ -86,6 +86,7 @@ interface CustomChatProps {
   pendingPrompt: string | null;
   onClearPendingPrompt: () => void;
   onThreadUpdated?: () => void;
+  starterPrompts?: any[];
 }
 
 // --------------------------------------------------------------------------
@@ -162,7 +163,7 @@ const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
           <div className={`apcot-tool-status-badge ${status}`}>
             {status === "running" ? (
               <>
-                <LoaderIcon className="apcot-spinner" />
+                <Mirage size={24} color="var(--accent-light)" speed={1.5} />
                 Running
               </>
             ) : (
@@ -257,6 +258,13 @@ const ThreadMessageSteps: React.FC<ThreadMessageStepsProps> = ({ stepParts, isGe
   }, [isGenerating]);
 
   const stepCount = stepParts.length;
+
+  // Count how many steps are actually completed (meaningful text or completed tools)
+  const completedSteps = stepParts.filter(p => {
+    if (p.type === "reasoning") return p.text && p.text.trim().length > 0;
+    if (p.type === "tool-call") return p.status === "complete" || p.result;
+    return false;
+  }).length;
   
   // Identify active step detail
   let activeStepText = "Reasoning...";
@@ -276,9 +284,14 @@ const ThreadMessageSteps: React.FC<ThreadMessageStepsProps> = ({ stepParts, isGe
       >
         <div className="apcot-unified-steps-header-left">
           {isGenerating ? (
-            <div className="apcot-steps-loader-container">
-              <LoaderIcon className="apcot-spinner apcot-steps-loader" />
-              <span>{stepCount} {stepCount === 1 ? "step" : "steps"} taken</span>
+            <div className="apcot-steps-loader-container" style={{ gap: "10px" }}>
+              <Mirage size={28} color="var(--accent-light)" speed={2.0} />
+              <span>
+                {completedSteps === 0 
+                  ? "Processing..." 
+                  : `${completedSteps} ${completedSteps === 1 ? "step" : "steps"} taken`
+                }
+              </span>
             </div>
           ) : (
             <div className="apcot-steps-complete-container">
@@ -382,6 +395,14 @@ const ThreadMessage: React.FC = () => {
   return (
     <MessagePrimitive.Root className="apcot-msg-root assistant-msg">
       <div className="apcot-assistant-body">
+        {/* Render instant initial loading state if we are running but haven't received parts or steps yet */}
+        {isGenerating && stepParts.length === 0 && outputParts.length === 0 && (
+          <div className="apcot-steps-loader-container" style={{ gap: "10px", padding: "4px 8px" }}>
+            <Mirage size={28} color="var(--accent-light)" speed={2.0} />
+            <span style={{ fontSize: "0.85rem", color: "var(--text-secondary)" }}>Thinking...</span>
+          </div>
+        )}
+
         {/* Render unified retractable steps bar if steps are present */}
         {stepParts.length > 0 && (
           <ThreadMessageSteps stepParts={stepParts} isGenerating={isGenerating} />
@@ -449,10 +470,11 @@ const CustomComposer: React.FC = () => {
 // --------------------------------------------------------------------------
 interface ThreadWelcomeProps {
   onSendPrompt: (prompt: string) => void;
+  starterPrompts?: any[];
 }
 
-const ThreadWelcome: React.FC<ThreadWelcomeProps> = ({ onSendPrompt }) => {
-  const suggestions = [
+const ThreadWelcome: React.FC<ThreadWelcomeProps> = ({ onSendPrompt, starterPrompts }) => {
+  const suggestions = starterPrompts && starterPrompts.length > 0 ? starterPrompts : [
     {
       title: "Help & Guidelines",
       prompt: "Can you list the guidelines in 'ui-project-bootstrap-guidelines.md'?",
@@ -507,12 +529,14 @@ interface ChatViewportProps {
   runtime: any;
   pendingPrompt: string | null;
   onClearPendingPrompt: () => void;
+  starterPrompts?: any[];
 }
 
 const ChatViewport: React.FC<ChatViewportProps> = ({ 
   runtime, 
   pendingPrompt, 
-  onClearPendingPrompt 
+  onClearPendingPrompt,
+  starterPrompts
 }) => {
   const isEmpty = useAuiState((s) => s.thread.isEmpty);
 
@@ -530,7 +554,7 @@ const ChatViewport: React.FC<ChatViewportProps> = ({
     <ThreadPrimitive.Root className="apcot-chat-layout-root">
       <ThreadPrimitive.Viewport className="apcot-chat-viewport" turnAnchor="top">
         {isEmpty ? (
-          <ThreadWelcome onSendPrompt={(prompt) => runtime.thread.append(prompt)} />
+          <ThreadWelcome onSendPrompt={(prompt) => runtime.thread.append(prompt)} starterPrompts={starterPrompts} />
         ) : (
           <div className="apcot-chat-messages-container">
             <ThreadPrimitive.Messages>
@@ -581,7 +605,8 @@ export const CustomChat: React.FC<CustomChatProps> = ({
   initialMessages,
   pendingPrompt,
   onClearPendingPrompt,
-  onThreadUpdated
+  onThreadUpdated,
+  starterPrompts
 }) => {
   // Freeze initialMessages inside local state to block reactive resets from parent re-renders
   const [frozenMessages] = useState(() => initialMessages);
@@ -599,6 +624,9 @@ export const CustomChat: React.FC<CustomChatProps> = ({
       // Use the native ID generated by assistant-ui so frontend and backend are perfectly in sync
       const assistantMessageId = unstable_assistantMessageId || crypto.randomUUID();
       
+      // Yield an initial empty array instantly to mount the assistant bubble and show visual feedback
+      yield { id: assistantMessageId, content: [] };
+
       // Grab text from first content part of user message
       let textContent = "";
       if (typeof userMessage.content === "string") {
@@ -666,7 +694,28 @@ export const CustomChat: React.FC<CustomChatProps> = ({
               if (currentEvent === "reasoning") {
                 accumulatedReasoning = data;
               } else if (currentEvent === "text") {
-                accumulatedText = data;
+                const targetText = data;
+                if (!accumulatedText && targetText.length > 30) {
+                  // Typewriter-simulate non-streamed text responses on the client side
+                  const words = targetText.split(" ");
+                  let typedText = "";
+                  for (const word of words) {
+                    if (typedText) typedText += " ";
+                    typedText += word;
+                    accumulatedText = typedText;
+                    
+                    const content: MessagePart[] = [];
+                    if (accumulatedReasoning) content.push({ type: "reasoning", text: accumulatedReasoning });
+                    if (toolCallInfo) content.push(toolCallInfo);
+                    content.push({ type: "text", text: accumulatedText });
+                    yield { id: assistantMessageId, content };
+                    
+                    await new Promise(resolve => setTimeout(resolve, 15));
+                  }
+                  continue;
+                } else {
+                  accumulatedText = targetText;
+                }
               } else if (currentEvent === "tool-call") {
                 const tc = JSON.parse(data);
                 toolCallInfo = {
@@ -759,6 +808,7 @@ export const CustomChat: React.FC<CustomChatProps> = ({
         runtime={runtime}
         pendingPrompt={pendingPrompt}
         onClearPendingPrompt={onClearPendingPrompt}
+        starterPrompts={starterPrompts}
       />
     </AssistantRuntimeProvider>
   );

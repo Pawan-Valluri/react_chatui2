@@ -4,7 +4,7 @@ import uuid
 import base64
 import hashlib
 import os
-from typing import List, Optional
+from typing import List, Optional, Any
 from fastapi import FastAPI, Depends, HTTPException, status, Body, Request, Header, Cookie
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -13,24 +13,91 @@ from pydantic import BaseModel
 
 import database
 from database import get_db, Thread, Message
-from agent import agent_graph
+from agent import create_agent_graph
 
 # Initialize database tables on startup
 database.init_db()
 
 app = FastAPI(title="APCOT Chat Backend")
 
+# Helper to load config.json from root directory
+def load_combined_config():
+    config = {
+        "BACKEND_PORT": 8080,
+        "AUTHBLUE_PORT": 5001,
+        "FRONTEND_PORT": 5173,
+        "ENABLE_SSO": True
+    }
+    try:
+        config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config.json")
+        if os.path.exists(config_path):
+            with open(config_path, "r", encoding="utf-8") as f:
+                loaded = json.load(f)
+                for k, v in loaded.items():
+                    config[k] = v
+    except Exception as e:
+        print("Failed to load root config.json in backend:", e)
+    return config
+
+root_config = load_combined_config()
+frontend_port = root_config.get("FRONTEND_PORT", 5173)
+
+# Load configure values for backend delays from nested MOCK_CONFIG with default fallbacks
+mock_config = root_config.get("MOCK_CONFIG", {})
+REASONING_STEP_DELAY = float(mock_config.get("REASONING_STEP_DELAY", 0.12))
+TOOL_RUNNING_DELAY = float(mock_config.get("TOOL_RUNNING_DELAY", 0.4))
+TOOL_COMPLETE_DELAY = float(mock_config.get("TOOL_COMPLETE_DELAY", 0.15))
+TEXT_STREAM_DELAY = float(mock_config.get("TEXT_STREAM_DELAY", 0.018))
+
+REGULAR_REASONING_DELAY = float(mock_config.get("REGULAR_REASONING_DELAY", 0.06))
+REGULAR_TOOL_RUNNING_DELAY = float(mock_config.get("REGULAR_TOOL_RUNNING_DELAY", 0.3))
+REGULAR_TOOL_COMPLETE_DELAY = float(mock_config.get("REGULAR_TOOL_COMPLETE_DELAY", 0.1))
+REGULAR_TEXT_STREAM_DELAY = float(mock_config.get("REGULAR_TEXT_STREAM_DELAY", 0.015))
+
+
 # Enable CORS for the local Vite dev server
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=[
+        "http://localhost:5173", "http://127.0.0.1:5173",
+        f"http://localhost:{frontend_port}", f"http://127.0.0.1:{frontend_port}"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Global setting: if "true", missing auth raises 401. If "false", falls back to "beyond_dev"
-ENABLE_SSO = os.environ.get("ENABLE_SSO", "true").lower() == "true"
+# Global setting: if True, missing auth raises 401. If False, falls back to "beyond_dev"
+env_sso = os.environ.get("ENABLE_SSO")
+if env_sso is not None:
+    ENABLE_SSO = env_sso.lower() == "true"
+else:
+    ENABLE_SSO = bool(root_config.get("ENABLE_SSO", True))
+
+# Global setting for streaming response (default is True)
+ENABLE_STREAMING = bool(root_config.get("ENABLE_STREAMING", True))
+
+# Global setting to toggle Mock LLM vs Production OpenAI (default is True)
+mock_config = root_config.get("MOCK_CONFIG", {})
+USE_MOCK_LLM = bool(mock_config.get("USE_MOCK_LLM", True))
+
+
+def get_polymorphic_llm() -> Any:
+    """Injects the appropriate LLM client dynamically based on config."""
+    if USE_MOCK_LLM:
+        try:
+            from mock_showcase.mock_llm import MockChatModel
+            return MockChatModel()
+        except ImportError as e:
+            print("Warning: MockChatModel file not found. Falling back to ChatOpenAI:", e)
+            
+    # Production path: OpenAI ChatModel via LangChain
+    from langchain_openai import ChatOpenAI
+    return ChatOpenAI(
+        model="gpt-4o-mini",
+        temperature=0.1
+    )
+
 
 def get_current_user(
     request: Request,
@@ -155,6 +222,28 @@ def get_user_userinfo(current_user: dict = Depends(get_current_user)):
 def get_api_user_me(current_user: dict = Depends(get_current_user)):
     return get_user_userinfo(current_user)
 
+@app.get("/api/starter-prompts")
+def get_starter_prompts(current_user: dict = Depends(get_current_user)):
+    """Dedicated API endpoint to retrieve standard conversation starter prompts."""
+    return [
+        {
+            "title": "Help & Guidelines",
+            "prompt": "Can you list the guidelines in 'ui-project-bootstrap-guidelines.md'?"
+        },
+        {
+            "title": "Knowledge Base Lookup",
+            "prompt": "Search the knowledge base for APCOT Chat information"
+        },
+        {
+            "title": "State Machine Demo",
+            "prompt": "Show me a demo of your LangGraph thinking and tool executing cycles!"
+        },
+        {
+            "title": "Aesthetics Showcase",
+            "prompt": "Explain how your dark mode glassmorphic UI is styled without Tailwind CSS"
+        }
+    ]
+
 # CRUD API Routes
 @app.get("/api/threads")
 def list_threads(db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
@@ -217,185 +306,232 @@ async def send_message(thread_id: str, payload: MessageCreate, db: Session = Dep
 
     # 4. SSE Stream Generator
     async def sse_generator():
-        # Check if the prompt triggers the multi-step search showcase
-        input_lower = payload.content.lower()
-        is_multi_step = any(kw in input_lower for kw in ["multi", "multiple", "advanced", "complex", "step"])
+        llm = get_polymorphic_llm()
+        
+        # Inject current user context into the polymorphic mock model if active
+        if hasattr(llm, "user_id"):
+            llm.user_id = current_user["user_id"]
+        if hasattr(llm, "fullname"):
+            llm.fullname = current_user["fullname"]
 
+        # Compile the graph dynamically using our injected LLM.
+        # If USE_MOCK_LLM is true, we load and pass the custom mock tools containing simulated delays.
+        # Otherwise, the graph compiles with the pristine, mock-free production tools defined inside agent.py.
+        graph_tools = None
+        if USE_MOCK_LLM:
+            try:
+                from mock_showcase.mock_tools import think as mock_think, search_kb as mock_search_kb, check_entitlements as mock_check_entitlements
+                graph_tools = [mock_think, mock_search_kb, mock_check_entitlements]
+            except Exception as e:
+                print("Failed to load mock_tools:", e)
+                
+        agent_graph = create_agent_graph(llm, tools=graph_tools)
+
+        # 1. Fetch thread history from DB to build dynamic context state for branching.
+        # Since the user could edit a previous message to create a branch, we reconstruct the exact linear path
+        # of the active branch by traversing parent_id pointers backward starting from user_message.parent_id.
+        all_thread_msgs = db.query(Message).filter(Message.thread_id == thread_id).all()
+        msg_map = {m.id: m for m in all_thread_msgs}
+        
+        ancestors = []
+        curr_parent_id = user_message.parent_id
+        while curr_parent_id and curr_parent_id in msg_map:
+            ancestor_msg = msg_map[curr_parent_id]
+            ancestors.append(ancestor_msg)
+            curr_parent_id = ancestor_msg.parent_id
+            
+        # Reverse to get chronological order (oldest to newest) leading up to our new user message
+        ancestors.reverse()
+        db_messages = ancestors
+        
+        from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
+        
+        state_messages = []
+        for msg in db_messages:
+            # Reconstruct content parts
+            try:
+                content_parts = json.loads(msg.content)
+            except Exception:
+                content_parts = [{"type": "text", "text": msg.content}]
+                
+            if msg.role == "user":
+                # User prompt
+                txt = "".join(p.get("text", "") for p in content_parts if p.get("type") == "text")
+                state_messages.append(HumanMessage(content=txt, id=msg.id))
+            else:
+                # Reconstruct assistant reasoning (think tool calls), tool usages, and text
+                # We group them in sequential AI / Tool messages matching how they were recorded
+                ai_tool_calls = []
+                for p in content_parts:
+                    if p.get("type") == "reasoning":
+                        # Map reasoning back to virtual think tool call
+                        ai_tool_calls.append({
+                            "name": "think",
+                            "args": {"thought": p.get("text", "")},
+                            "id": f"tc_think_hist_{msg.id}_{len(ai_tool_calls)}",
+                            "type": "tool_call"
+                        })
+                    elif p.get("type") == "tool-call":
+                        # Map dynamic tool call logs back
+                        ai_tool_calls.append({
+                            "name": p.get("toolName", ""),
+                            "args": p.get("args", {}),
+                            "id": p.get("toolCallId", ""),
+                            "type": "tool_call"
+                        })
+                
+                # Check for standard textual response in content parts
+                txt_response = "".join(p.get("text", "") for p in content_parts if p.get("type") == "text")
+                
+                # Append standard AIMessage if there were tool calls or text response
+                if ai_tool_calls or txt_response:
+                    state_messages.append(AIMessage(
+                        content=txt_response,
+                        tool_calls=ai_tool_calls,
+                        id=msg.id
+                    ))
+                
+                # Append subsequent ToolMessage outputs
+                for p in content_parts:
+                    if p.get("type") == "tool-call" and p.get("result") is not None:
+                        state_messages.append(ToolMessage(
+                            content=str(p.get("result", "")),
+                            name=p.get("toolName", ""),
+                            tool_call_id=p.get("toolCallId", ""),
+                            id=f"tm_hist_{msg.id}_{p.get('toolCallId', '')}"
+                        ))
+
+        # Append the active new user prompt at the end of the history context
+        state_messages.append(HumanMessage(content=payload.content, id=user_message.id))
+
+        state = {
+            "messages": state_messages,
+            "reasoning_steps": [],
+            "loop_counter": 0
+        }
+
+        # Initialize parts list
         parts = []
 
-        if is_multi_step:
-            # ─── SHOWCASE: MULTI-STEP THINKING & MULTIPLE TOOL USE ───
-            
-            # Step 1: Thought 1
-            thought1 = [
-                "Initializing advanced multi-step search pipeline...",
-                "Searching the primary Knowledge Base for 'APCOT Chat' baseline architecture...",
-                "Retrieving local framework specifications for @assistant-ui/react..."
-            ]
-            parts.append({"type": "reasoning", "text": ""})
-            accumulated = ""
-            for step in thought1:
-                if accumulated:
-                    accumulated += "\n"
-                accumulated += step
-                parts[0]["text"] = accumulated
-                yield f"event: parts\ndata: {json.dumps(parts)}\n\n"
-                await asyncio.sleep(0.12)
+        # Yield an initial empty reasoning part instantly to trigger client-side mounting
+        parts.append({"type": "reasoning", "text": ""})
+        yield f"event: parts\ndata: {json.dumps(parts)}\n\n"
 
-            # Step 2: Tool 1 (Running)
-            t1_info = {
-                "type": "tool-call",
-                "toolCallId": "tc_kb_search_1",
-                "toolName": "search_kb",
-                "args": {"query": "APCOT Chat framework architecture"},
-                "status": "running"
-            }
-            parts.append(t1_info)
-            yield f"event: parts\ndata: {json.dumps(parts)}\n\n"
-            await asyncio.sleep(0.4)
+        # Accumulate state internally
+        initial_msg_count = len(state["messages"])
+        messages = list(state["messages"])
+        reasoning_steps = []
+        has_streamed_text = False
 
-            # Step 2: Tool 1 (Complete)
-            parts[1]["status"] = "complete"
-            parts[1]["result"] = (
-                "SUCCESS: Found Knowledge Base specs for 'APCOT Chat'. "
-                "Core: React, Vite, TypeScript. UI primitives: @assistant-ui/react. "
-                "Styling: Pure Vanilla CSS with smooth collapsing transitions."
-            )
-            yield f"event: parts\ndata: {json.dumps(parts)}\n\n"
-            await asyncio.sleep(0.15)
+        try:
+            # stream_mode="updates" streams state modifications node by node
+            async for update in agent_graph.astream(state, stream_mode="updates"):
+                for node_name, node_data in update.items():
+                    if "messages" in node_data:
+                        # Append any new messages produced by the node
+                        for m in node_data["messages"]:
+                            if m not in messages:
+                                messages.append(m)
+                    if "reasoning_steps" in node_data:
+                        reasoning_steps = node_data["reasoning_steps"]
 
-            # Step 3: Thought 2
-            thought2 = [
-                "Baseline specifications retrieved successfully.",
-                "Now querying corporate Entitlements Repository to check group policy constraints...",
-                "Verifying active SSO permissions for Charles Frost (ADs ID: cfrost)..."
-            ]
-            parts.append({"type": "reasoning", "text": ""})
-            accumulated = ""
-            for step in thought2:
-                if accumulated:
-                    accumulated += "\n"
-                accumulated += step
-                parts[2]["text"] = accumulated
-                yield f"event: parts\ndata: {json.dumps(parts)}\n\n"
-                await asyncio.sleep(0.12)
-
-            # Step 4: Tool 2 (Running)
-            t2_info = {
-                "type": "tool-call",
-                "toolCallId": "tc_entitlements_check_2",
-                "toolName": "check_entitlements",
-                "args": {"adsId": current_user["user_id"], "resource": "APCOT Chat"},
-                "status": "running"
-            }
-            parts.append(t2_info)
-            yield f"event: parts\ndata: {json.dumps(parts)}\n\n"
-            await asyncio.sleep(0.4)
-
-            # Step 4: Tool 2 (Complete)
-            parts[3]["status"] = "complete"
-            parts[3]["result"] = (
-                f"AUTHORIZED: User '{current_user['user_id']}' is a member of 'SSO_APP_ADMIN'. "
-                "Granted full administration, thread deletion, and query permissions."
-            )
-            yield f"event: parts\ndata: {json.dumps(parts)}\n\n"
-            await asyncio.sleep(0.15)
-
-            # Step 5: Thought 3
-            thought3 = [
-                "Group membership and SSO permissions verified.",
-                "Formulating final consolidated response including architectural specs and entitlement access status..."
-            ]
-            parts.append({"type": "reasoning", "text": ""})
-            accumulated = ""
-            for step in thought3:
-                if accumulated:
-                    accumulated += "\n"
-                accumulated += step
-                parts[4]["text"] = accumulated
-                yield f"event: parts\ndata: {json.dumps(parts)}\n\n"
-                await asyncio.sleep(0.12)
-
-            # Step 6: Text response typewriter stream
-            response_text = (
-                f"Hello {current_user['fullname']}! I have executed an advanced multi-step "
-                "reasoning trace and triggered two local tools on your behalf:\n\n"
-                "1. **`search_kb`**: Retrieved the system design documents confirming APCOT Chat's "
-                "vanilla CSS layout and assistant primitives.\n"
-                "2. **`check_entitlements`**: Verified that your ADs ID (**`" + current_user['user_id'] + "`**) "
-                "is registered with **`SSO_APP_ADMIN`** corporate groups, granting you full administrative "
-                "permissions over this workspace.\n\n"
-                "The system is fully operational and securely integrated with your AuthBlue profile. "
-                "Let me know what you'd like to build next!"
-            )
-            parts.append({"type": "text", "text": ""})
-            words = response_text.split(" ")
-            current_text = ""
-            for word in words:
-                if current_text:
-                    current_text += " "
-                current_text += word
-                parts[5]["text"] = current_text
-                yield f"event: parts\ndata: {json.dumps(parts)}\n\n"
-                await asyncio.sleep(0.018)
-
-        else:
-            # ─── REGULAR FLOW: 1 THINKING STEP, OPTIONAL 1 TOOL ───
-            state = {
-                "input_text": payload.content,
-                "reasoning_steps": [],
-                "tool_calls": [],
-                "response_text": "",
-                "current_node": ""
-            }
-            
-            # --- NODE 1: THINKING ---
-            state = await agent_graph.ainvoke(state)
-            parts.append({"type": "reasoning", "text": ""})
-            accumulated = ""
-            for step in state["reasoning_steps"]:
-                if accumulated:
-                    accumulated += "\n"
-                accumulated += step
-                parts[0]["text"] = accumulated
-                yield f"event: parts\ndata: {json.dumps(parts)}\n\n"
-                await asyncio.sleep(0.06)
-
-            # --- NODE 2: TOOL ---
-            state = await agent_graph.ainvoke(state)
-            if state["tool_calls"]:
-                tc = state["tool_calls"][0]
-                t_info = {
-                    "type": "tool-call",
-                    "toolCallId": tc["toolCallId"],
-                    "toolName": tc["toolName"],
-                    "args": tc["args"],
-                    "status": "running"
-                }
-                parts.append(t_info)
-                yield f"event: parts\ndata: {json.dumps(parts)}\n\n"
-                await asyncio.sleep(0.3)
+                # Reconstruct rebuilt_parts dynamically from accumulated messages and reasoning_steps
+                rebuilt_parts = []
                 
-                parts[1]["status"] = "complete"
-                parts[1]["result"] = tc["result"]
-                yield f"event: parts\ndata: {json.dumps(parts)}\n\n"
-                await asyncio.sleep(0.1)
+                # 1. Add reasoning steps
+                for step in reasoning_steps:
+                    rebuilt_parts.append({"type": "reasoning", "text": step})
+                    
+                # 2. Add system tool calls (filtering out the virtual 'think' tool calls)
+                # Slice from initial_msg_count to only scan new assistant tool calls generated in the current turn
+                for msg in messages[initial_msg_count:]:
+                    if isinstance(msg, AIMessage) and msg.tool_calls:
+                        for tc in msg.tool_calls:
+                            if tc["name"] != "think":
+                                tc_id = tc["id"]
+                                # Search for the corresponding ToolMessage result
+                                tool_res = None
+                                for tm in messages[initial_msg_count:]:
+                                    if isinstance(tm, ToolMessage) and tm.tool_call_id == tc_id:
+                                        tool_res = tm.content
+                                        break
+                                
+                                status = "complete" if tool_res is not None else "running"
+                                rebuilt_parts.append({
+                                    "type": "tool-call",
+                                    "toolCallId": tc_id,
+                                    "toolName": tc["name"],
+                                    "args": tc["args"],
+                                    "status": status,
+                                    "result": tool_res
+                                })
 
-            # --- NODE 3: GENERATION ---
-            state = await agent_graph.ainvoke(state)
-            response_text = state["response_text"]
+                # Reconstruct final text response if present
+                final_text = ""
+                for msg in reversed(messages[initial_msg_count:]):
+                    if isinstance(msg, AIMessage) and msg.content and not msg.tool_calls:
+                        final_text = msg.content
+                        break
+
+                # Stream final text with typewriter if enabled, or immediately
+                if final_text and not has_streamed_text:
+                    has_streamed_text = True
+                    if ENABLE_STREAMING:
+                        words = final_text.split(" ")
+                        current_text = ""
+                        for word in words:
+                            if current_text:
+                                current_text += " "
+                            current_text += word
+                            parts_to_yield = list(rebuilt_parts) + [{"type": "text", "text": current_text}]
+                            yield f"event: parts\ndata: {json.dumps(parts_to_yield)}\n\n"
+                            await asyncio.sleep(REGULAR_TEXT_STREAM_DELAY)
+                    else:
+                        parts_to_yield = list(rebuilt_parts) + [{"type": "text", "text": final_text}]
+                        yield f"event: parts\ndata: {json.dumps(parts_to_yield)}\n\n"
+                
+                # If we haven't hit final text response yet, yield the current progress parts!
+                elif not final_text:
+                    yield f"event: parts\ndata: {json.dumps(rebuilt_parts)}\n\n"
+
+            # 4. Save final state to DB after stream finishes
+            final_rebuilt_parts = []
+            for step in reasoning_steps:
+                final_rebuilt_parts.append({"type": "reasoning", "text": step})
             
-            parts.append({"type": "text", "text": ""})
-            text_idx = len(parts) - 1
-            words = response_text.split(" ")
-            current_text = ""
-            for word in words:
-                if current_text:
-                    current_text += " "
-                current_text += word
-                parts[text_idx]["text"] = current_text
-                yield f"event: parts\ndata: {json.dumps(parts)}\n\n"
-                await asyncio.sleep(0.015)
+            for msg in messages[initial_msg_count:]:
+                if isinstance(msg, AIMessage) and msg.tool_calls:
+                    for tc in msg.tool_calls:
+                        if tc["name"] != "think":
+                            tc_id = tc["id"]
+                            tool_res = None
+                            for tm in messages[initial_msg_count:]:
+                                if isinstance(tm, ToolMessage) and tm.tool_call_id == tc_id:
+                                    tool_res = tm.content
+                                    break
+                            status = "complete" if tool_res is not None else "running"
+                            final_rebuilt_parts.append({
+                                "type": "tool-call",
+                                "toolCallId": tc_id,
+                                "toolName": tc["name"],
+                                "args": tc["args"],
+                                "status": status,
+                                "result": tool_res
+                            })
+            
+            final_text = ""
+            for msg in reversed(messages[initial_msg_count:]):
+                if isinstance(msg, AIMessage) and msg.content and not msg.tool_calls:
+                    final_text = msg.content
+                    break
+            if final_text:
+                final_rebuilt_parts.append({"type": "text", "text": final_text})
+
+            # Update parts variable so it is captured for database persistence below
+            parts = final_rebuilt_parts
+
+        except Exception as err:
+            print("Error encountered in agent graph stream:", err)
 
         # 5. Persist final assistant parts to database
         db_assistant = Message(
@@ -413,3 +549,9 @@ async def send_message(thread_id: str, payload: MessageCreate, db: Session = Dep
             db_new.close()
 
     return StreamingResponse(sse_generator(), media_type="text/event-stream")
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.environ.get("PORT", root_config["BACKEND_PORT"]))
+    print(f"Starting APCOT Chat Backend on port {port}...")
+    uvicorn.run("main:app", host="127.0.0.1", port=port, reload=True)

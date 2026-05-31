@@ -6,8 +6,28 @@ import time
 from typing import Optional
 from fastapi import FastAPI, Request, Form, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
+import json
+import os
 
 app = FastAPI(title="AuthBlue SSO Simulator")
+
+# Helper to load config.json from root directory
+def load_combined_config():
+    config = {
+        "AUTHBLUE_PORT": 5001
+    }
+    try:
+        config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config.json")
+        if os.path.exists(config_path):
+            with open(config_path, "r", encoding="utf-8") as f:
+                loaded = json.load(f)
+                for k, v in loaded.items():
+                    config[k] = v
+    except Exception as e:
+        print("Failed to load root config.json in SSO Simulator:", e)
+    return config
+
+root_config = load_combined_config()
 
 # Standard configuration
 JWT_SECRET = "authblue_simulator_jwt_secret_key_999!"
@@ -472,3 +492,9 @@ def logout(response: Response, redirect: Optional[str] = "http://localhost:5173/
     # Delete cooke by setting expiry in past
     response.delete_cookie(key="bluetoken", path="/")
     return response
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.environ.get("PORT", root_config["AUTHBLUE_PORT"]))
+    print(f"Starting AuthBlue SSO Simulator on port {port}...")
+    uvicorn.run("main:app", host="127.0.0.1", port=port, reload=True)

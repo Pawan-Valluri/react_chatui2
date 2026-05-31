@@ -2,8 +2,8 @@
   "BACKEND_PORT": 8080,
   "AUTHBLUE_PORT": 5001,
   "FRONTEND_PORT": 5173,
-  "ENABLE_SSO": false,
-  "ENABLE_STREAMING": false,
+  "ENABLE_SSO": true,
+  "ENABLE_STREAMING": true,
   "MOCK_CONFIG": {
     "USE_MOCK_LLM": true,
     "REASONING_STEP_DELAY": 0.5,

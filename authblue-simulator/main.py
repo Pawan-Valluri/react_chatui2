@@ -442,7 +442,6 @@ def get_login_page(request: Request, redirect: Optional[str] = "http://localhost
 
 @app.post("/login")
 def post_login(
-    response: Response,
     redirect: str = Form("http://localhost:5173/"),
     adsId: str = Form(...),
     email: str = Form(...),
@@ -487,7 +486,7 @@ def post_login(
     return response
 
 @app.get("/logout")
-def logout(response: Response, redirect: Optional[str] = "http://localhost:5173/"):
+def logout(redirect: Optional[str] = "http://localhost:5173/"):
     response = RedirectResponse(url=redirect, status_code=303)
     # Delete cooke by setting expiry in past
     response.delete_cookie(key="bluetoken", path="/")

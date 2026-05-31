@@ -10,7 +10,7 @@ from langchain_core.messages import BaseMessage, AIMessage, HumanMessage, ToolMe
 from langchain_core.outputs import ChatResult, ChatGeneration
 from langchain_core.callbacks import CallbackManagerForLLMRun
 
-from mock_showcase.mock_routes import CONVERSATION_ROUTES
+from app.mock_showcase.mock_routes import CONVERSATION_ROUTES
 
 # Helper to load config.json from root directory
 def load_combined_config():

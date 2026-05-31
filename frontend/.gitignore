@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Local DLS Fallback Styles & Fonts
+public/dls-core.css
+public/*.woff2

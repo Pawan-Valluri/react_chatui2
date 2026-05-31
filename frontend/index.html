@@ -5,6 +5,8 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>APCOT Chat</title>
+    <!-- Try loading DLS core from American Express CDN, fall back to local stylesheet served from public/ if unavailable -->
+    <link rel="stylesheet" href="https://www.aexp-static.com/cdaas/dls/packages/@americanexpress/dls/7.15.0/stylesheets/dls-core.min.css" onerror="this.onerror=null;this.href='/dls-core.css';" />
   </head>
   <body>
     <div id="root"></div>

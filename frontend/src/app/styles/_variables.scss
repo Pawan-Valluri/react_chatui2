@@ -1,0 +1,152 @@
+/* ==========================================================================
+   APCOT CHAT Redesign Variables & Tokens
+   ========================================================================== */
+
+// --------------------------------------------------------------------------
+// 1. CONFIGURABLE ANIMATION VARIABLES
+// --------------------------------------------------------------------------
+// Tweak these variables to instantly change animations across the entire UI.
+$anim-speed-factor: 1.5; // Set to 0.5 for hyper-speed, 2.0 for slow-motion
+
+// Snappy, custom cubic-bezier curve (very fast in middle, smooth at edges)
+// Custom cubic-bezier transition curves for high-fidelity snappiness
+$transition-curve: cubic-bezier(0.19, 1, 0.22, 1);
+$transition-curve-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+// Duration variables computed with the speed factor
+$duration-fast: calc(0.15s * #{$anim-speed-factor});
+$duration-normal: calc(0.26s * #{$anim-speed-factor});
+$duration-slow: calc(0.42s * #{$anim-speed-factor});
+
+// Completed Transition Shortcuts
+$transition-fast: all #{$duration-fast} #{$transition-curve};
+$transition-normal: all #{$duration-normal} #{$transition-curve};
+$transition-slow: all #{$duration-slow} #{$transition-curve};
+$transition-bounce: all #{$duration-normal} #{$transition-curve-bounce};
+
+// --------------------------------------------------------------------------
+// 2. BRAND COLOR PALETTE (Colors.md Guidelines)
+// --------------------------------------------------------------------------
+// Primary Palette
+$amex-bright-blue: #006fcf; // Bright Blue HEX
+$amex-deep-blue: #00175a;   // Deep Blue HEX
+$amex-light-blue: #66a9e2;  // Light Blue Accent HEX
+
+// Neutrals
+$white: #ffffff;
+$black: #000000;
+$gray-neutral: #a7a8aa;
+
+// Secondary Grays (Colors.md Palette)
+$gray-1: #d9d9d6;
+$gray-2: #d0d0ce;
+$gray-3: #c8c9c7;
+$gray-4: #bbbcbc;
+$gray-5: #b1b3b3;
+$gray-6: #a7a8aa;
+$gray-7: #97999b;
+$gray-8: #888b8d;
+$gray-9: #75787b;
+$gray-10: #63666a;
+$gray-11: #53565a;
+
+// --------------------------------------------------------------------------
+// 3. SEMANTIC GLASSMORPHISM SETTINGS
+// --------------------------------------------------------------------------
+$glass-blur: 24px;
+$glass-blur-sm: 10px;
+
+// Shadows
+$shadow-premium-light: 0 8px 32px 0 rgba(0, 23, 90, 0.06);
+$shadow-premium-dark: 0 12px 40px 0 rgba(0, 0, 0, 0.45);
+$shadow-glow-light: 0 0 15px rgba(0, 111, 207, 0.15);
+$shadow-glow-dark: 0 0 20px rgba(102, 169, 226, 0.2);
+
+// Borders
+$border-radius-sm: 8px;
+$border-radius-md: 12px;
+$border-radius-lg: 18px;
+$border-radius-xl: 24px;
+
+// --------------------------------------------------------------------------
+// 4. THEME CUSTOM PROPERTIES (Injected at :root / [data-theme])
+// --------------------------------------------------------------------------
+:root {
+  // CSS Animation tokens exposed to runtime if needed
+  --transition-speed-factor: #{$anim-speed-factor};
+  --transition-curve: #{$transition-curve};
+  --transition-normal: #{$transition-normal};
+  --transition-fast: #{$transition-fast};
+}
+
+[data-theme="dark"] {
+  // ChatGPT dark mode slate foundations
+  --bg-primary: #0d0d0d;
+  --bg-secondary: #171717;
+  --bg-tertiary: #212121;
+  --inlay-bg: #1a1a1a;
+  --border-color: rgba(255, 255, 255, 0.08);
+  --border-focus: #{$amex-light-blue};
+  
+  // Glass properties
+  --glass-bg: rgba(23, 23, 23, 0.75);
+  --glass-border: rgba(255, 255, 255, 0.07);
+  --glass-shadow: #{$shadow-premium-dark};
+  --glass-glow: #{$shadow-glow-dark};
+
+  // Typography
+  --text-primary: #f2f2f2;
+  --text-secondary: #c9c9c9;
+  --text-muted: #8c8c8c;
+  --text-dark: #63666a;
+
+  // Accents
+  --accent-color: #{$amex-bright-blue};
+  --accent-hover: #0084f7;
+  --accent-light: #{$amex-light-blue};
+  --accent-glow: rgba(0, 111, 207, 0.25);
+  
+  // Message bubbles
+  --bubble-user-bg: #{$amex-bright-blue};
+  --bubble-user-text: #ffffff;
+  --bubble-assistant-bg: rgba(33, 33, 33, 0.5);
+  --bubble-assistant-text: #f2f2f2;
+  --card-hover: rgba(255, 255, 255, 0.04);
+  --card-bg: rgba(255, 255, 255, 0.02);
+}
+
+[data-theme="light"] {
+  // ChatGPT light mode snow foundations
+  --bg-primary: #ffffff;
+  --bg-secondary: #f9f9fb;
+  --bg-tertiary: #f4f4f6;
+  --inlay-bg: #f9f9fb;
+  --border-color: rgba(0, 23, 90, 0.08);
+  --border-focus: #{$amex-bright-blue};
+
+  // Glass properties
+  --glass-bg: rgba(255, 255, 255, 0.85);
+  --glass-border: rgba(0, 23, 90, 0.06);
+  --glass-shadow: #{$shadow-premium-light};
+  --glass-glow: #{$shadow-glow-light};
+
+  // Typography
+  --text-primary: #00175a; // deep brand blue for maximum legibility
+  --text-secondary: #3d3d3d;
+  --text-muted: #737373;
+  --text-dark: #a7a8aa;
+
+  // Accents
+  --accent-color: #{$amex-bright-blue};
+  --accent-hover: #0059b0;
+  --accent-light: #{$amex-light-blue};
+  --accent-glow: rgba(0, 111, 207, 0.12);
+
+  // Message bubbles
+  --bubble-user-bg: #{$amex-bright-blue};
+  --bubble-user-text: #ffffff;
+  --bubble-assistant-bg: rgba(0, 23, 90, 0.03);
+  --bubble-assistant-text: #00175a;
+  --card-hover: rgba(0, 23, 90, 0.03);
+  --card-bg: rgba(0, 23, 90, 0.01);
+}

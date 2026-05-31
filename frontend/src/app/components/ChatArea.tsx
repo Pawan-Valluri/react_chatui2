@@ -1,6 +1,6 @@
 import React from "react";
 import { CustomChat } from "./CustomChat";
-import { Sun, Moon } from "lucide-react";
+import { Sun, Moon, Loader2, Sparkles } from "lucide-react";
 
 interface Thread {
   id: string;
@@ -57,9 +57,18 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
       </header>
 
       {/* Main viewport area */}
-      {!currentThreadId || isLoadingMessages ? (
-        <div style={{ display: "flex", flex: 1, alignItems: "center", justifyContent: "center", height: "100%", color: "var(--text-muted)", fontSize: "0.9rem" }}>
-          Initializing APCOT Chat session...
+      {isLoadingMessages ? (
+        <div style={{ display: "flex", flexDirection: "column", flex: 1, alignItems: "center", justifyContent: "center", height: "100%", color: "var(--text-muted)", gap: "12px" }}>
+          <Loader2 className="apcot-spinner" size={24} style={{ color: "var(--accent-light)" }} />
+          <span style={{ fontSize: "0.85rem", letterSpacing: "0.2px" }}>Loading messages...</span>
+        </div>
+      ) : !currentThreadId ? (
+        <div style={{ display: "flex", flexDirection: "column", flex: 1, alignItems: "center", justifyContent: "center", height: "100%", color: "var(--text-muted)", gap: "16px", padding: "20px", textAlign: "center" }}>
+          <Sparkles size={32} style={{ color: "var(--accent-light)", opacity: 0.6 }} />
+          <span style={{ fontSize: "0.9rem", fontWeight: 500, color: "var(--text-secondary)" }}>No conversation selected</span>
+          <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", maxWidth: "320px", lineHeight: "1.5" }}>
+            Select an existing conversation from the sidebar or create a new one to begin.
+          </span>
         </div>
       ) : (
         // Key-reset on threadId changes force full reload of assistant useLocalRuntime

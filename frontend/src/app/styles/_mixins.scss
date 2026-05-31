@@ -1,0 +1,71 @@
+/* ==========================================================================
+   APCOT CHAT Redesign Mixins
+   ========================================================================== */
+
+@use "./variables" as *;
+
+// 1. Premium Glassmorphic Overlay Mixin
+@mixin glass-panel($bg-token: var(--glass-bg), $border-token: var(--glass-border), $shadow-token: var(--glass-shadow), $blur: $glass-blur) {
+  background: $bg-token;
+  backdrop-filter: blur($blur);
+  -webkit-backdrop-filter: blur($blur);
+  border: 1px solid $border-token;
+  box-shadow: $shadow-token;
+}
+
+// 2. High-Fidelity Glow Outline Mixin (grows on focus or active selection)
+@mixin glow-focus($glow-color: var(--accent-light), $shadow-glow: var(--glass-glow)) {
+  border-color: $glow-color;
+  box-shadow: $shadow-glow, inset 0 0 0 1px $glow-color;
+  outline: none;
+}
+
+// 3. Subtle Premium Text Gradient
+@mixin text-gradient($gradient-colors) {
+  background: linear-gradient($gradient-colors);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  display: inline-block;
+}
+
+// 4. Custom ChatGPT-Style Premium Scrollbar
+@mixin premium-scrollbar {
+  &::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  &::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 99px;
+    transition: $transition-fast;
+    
+    [data-theme="light"] & {
+      background: rgba(0, 23, 90, 0.06);
+    }
+  }
+  
+  &:hover::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.12);
+    
+    [data-theme="light"] & {
+      background: rgba(0, 23, 90, 0.15);
+    }
+  }
+
+  &::-webkit-scrollbar-thumb:hover {
+    background: var(--accent-light);
+  }
+}
+
+// 5. Centered Flexbox container helper
+@mixin flex-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}

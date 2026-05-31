@@ -4,7 +4,6 @@ import {
   AssistantRuntimeProvider,
   useAuiState,
   ComposerPrimitive,
-  AuiIf,
   MessagePrimitive,
   ThreadPrimitive,
   ActionBarPrimitive,
@@ -81,10 +80,6 @@ interface MessagePart {
   status?: "running" | "complete";
 }
 
-interface ThreadMessageProps {
-  id: string;
-}
-
 interface CustomChatProps {
   threadId: string;
   initialMessages: any[];
@@ -102,7 +97,7 @@ interface ReasoningBlockProps {
 }
 
 const ReasoningBlock: React.FC<ReasoningBlockProps> = ({ text, autoCollapse }) => {
-  const [isOpen, setIsOpen] = useState(true);
+  const [isOpen, setIsOpen] = useState(!autoCollapse);
 
   React.useEffect(() => {
     if (autoCollapse) {
@@ -148,7 +143,7 @@ const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
   status, 
   autoCollapse 
 }) => {
-  const [isOpen, setIsOpen] = useState(true);
+  const [isOpen, setIsOpen] = useState(!autoCollapse);
 
   React.useEffect(() => {
     if (autoCollapse) {
@@ -253,7 +248,7 @@ interface ThreadMessageStepsProps {
 
 const ThreadMessageSteps: React.FC<ThreadMessageStepsProps> = ({ stepParts, isGenerating }) => {
   // Keep open during active streaming, collapse automatically on completion
-  const [isOpen, setIsOpen] = useState(true);
+  const [isOpen, setIsOpen] = useState(isGenerating);
 
   React.useEffect(() => {
     if (!isGenerating) {

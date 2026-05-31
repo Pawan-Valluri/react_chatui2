@@ -2,9 +2,8 @@ import React, { useState } from "react";
 import { 
   PlusIcon, 
   TrashIcon, 
-  MessageSquareIcon, 
-  SettingsIcon, 
   SparklesIcon 
+
 } from "./Icons";
 
 interface Thread {
@@ -124,20 +123,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
     >
       {/* Brand Header */}
       <div className="apcot-sidebar-header">
-        <div 
-          className="apcot-logo-section" 
-          onClick={(e) => {
-            if (isCollapsed) {
-              e.stopPropagation();
-              setIsCollapsed(false);
-            }
-          }}
-        >
-          <div className="apcot-logo-icon">
-            <SparklesIcon />
+        {!isCollapsed && (
+          <div 
+            className="apcot-logo-section" 
+            onClick={(e) => {
+              if (isCollapsed) {
+                e.stopPropagation();
+                setIsCollapsed(false);
+              }
+            }}
+          >
+            <div className="apcot-logo-icon">
+              <SparklesIcon />
+            </div>
+            <span className="apcot-logo-text">APCOT Chat</span>
           </div>
-          <span className="apcot-logo-text">APCOT Chat</span>
-        </div>
+        )}
         
         <button 
           className="apcot-sidebar-collapse-btn" 
@@ -146,12 +147,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
             toggleCollapse();
           }}
           aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+          style={isCollapsed ? { margin: "0 auto" } : {}}
         >
           <CollapseLeftIcon style={{ transform: isCollapsed ? "rotate(180deg)" : "none" }} />
         </button>
       </div>
 
-      {/* New Chat Button */}
       <div className="apcot-new-chat-wrapper">
         {isCollapsed ? (
           <button 

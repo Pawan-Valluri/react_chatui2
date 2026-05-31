@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Sidebar } from "./components/Sidebar";
 import { ChatArea } from "./components/ChatArea";
-import "./styles/App.css";
+import "./styles/App.scss";
 
 interface Thread {
   id: string;
@@ -161,10 +161,18 @@ export function App({ config }: AppProps = {}) {
         method: "DELETE",
       });
       if (res.ok) {
-        setThreads((prev) => prev.filter((t) => t.id !== threadId));
-        if (currentThreadId === threadId) {
-          setCurrentThreadId(null);
-        }
+        setThreads((prev) => {
+          const updated = prev.filter((t) => t.id !== threadId);
+          if (currentThreadId === threadId) {
+            if (updated.length > 0) {
+              setCurrentThreadId(updated[0].id);
+            } else {
+              setCurrentThreadId(null);
+              handleCreateThread();
+            }
+          }
+          return updated;
+        });
       }
     } catch (err) {
       console.error("Error deleting thread:", err);

@@ -1,0 +1,184 @@
+/* ==========================================================================
+   DocumentWorkspace component styles
+   ========================================================================== */
+
+.document-workspace-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  position: relative;
+  overflow: hidden;
+  background-color: var(--bg-primary);
+}
+
+.floating-status-badge {
+  position: absolute;
+  top: 10px;
+  right: 16px;
+  z-index: 50;
+  font-size: 0.68rem;
+  padding: 4px 10px;
+  border-radius: 99px;
+  border: 1px solid var(--border-color);
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--glass-bg);
+  backdrop-filter: blur(10px);
+  color: var(--text-muted);
+  box-shadow: var(--glass-shadow);
+  transition: all 0.3s ease;
+  pointer-events: none;
+
+  &.saving {
+    color: var(--accent-light);
+    border-color: rgba(0, 111, 207, 0.25);
+    background: rgba(0, 111, 207, 0.1);
+  }
+
+  &.saved {
+    color: #10B981;
+    border-color: rgba(16, 185, 129, 0.25);
+    background: rgba(16, 185, 129, 0.1);
+    opacity: 0;
+    animation: fadeOut 2s forwards;
+    animation-delay: 2s;
+  }
+}
+
+.saving-spinner {
+  width: 10px;
+  height: 10px;
+  border: 2px solid rgba(1, 111, 208, 0.2);
+  border-top-color: var(--accent-light);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  display: inline-block;
+}
+
+.loading-spinner {
+  width: 30px;
+  height: 30px;
+  border: 3px solid rgba(1, 111, 207, 0.1);
+  border-top-color: var(--accent-light);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes fadeOut {
+  to { opacity: 0; visibility: hidden; }
+}
+
+.document-editor-viewport {
+  flex: 1;
+  width: 100%;
+  position: relative;
+  overflow: hidden; /* Changed from auto to hidden to prevent scrollbars since the scaled inner container fits exactly */
+  padding: 8px; /* Reduced from 16px to maximize display area */
+  background-color: var(--bg-secondary);
+
+  /* Customize native styles inside docx-editor if needed */
+  .docx-editor-root {
+    background-color: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    box-shadow: var(--glass-shadow);
+    min-height: 100%;
+    color: var(--text-primary);
+  }
+}
+
+.document-loading-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--bg-primary);
+  z-index: 20;
+  gap: 12px;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+/* ==========================================================================
+   FORCE USUAL (LIGHT) COLOR MODE FOR DOCX EDITOR
+   ========================================================================== */
+
+/* Regardless of the parent theme, keep the editor interface and document in light mode */
+.ep-root {
+  /* Override shadcn variables to force light mode themes */
+  --background: 0 0% 100% !important;
+  --foreground: 222.2 84% 4.9% !important;
+  --card: 0 0% 100% !important;
+  --card-foreground: 222.2 84% 4.9% !important;
+  --popover: 0 0% 100% !important;
+  --popover-foreground: 222.2 84% 4.9% !important;
+  --muted: 210 40% 96.1% !important;
+  --muted-foreground: 215.4 16.3% 46.9% !important;
+  --accent: 210 40% 96.1% !important;
+  --accent-foreground: 222.2 47.4% 11.2% !important;
+  --border: 214.3 31.8% 91.4% !important;
+  --input: 214.3 31.8% 91.4% !important;
+  --ring: 221.2 83.2% 53.3% !important;
+  --radius: 8px !important;
+
+  /* Document specific light mode values */
+  --doc-bg: #f8f9fa !important;
+  --doc-text: #202124 !important;
+  --doc-border: #e0e0e0 !important;
+  --doc-border-light: #dadce0 !important;
+  --doc-border-dark: #d0d0d0 !important;
+  --doc-bg-subtle: #f5f5f5 !important;
+  --doc-bg-hover: #f1f3f4 !important;
+  --doc-bg-input: #f8f9fa !important;
+  --doc-border-input: #ccc !important;
+  --doc-text-muted: #5f6368 !important;
+  --doc-text-subtle: #9aa0a6 !important;
+  --doc-link: #006fcf !important;
+
+  /* Force dark text color inside the editor scope */
+  color: #202124 !important;
+}
+
+/* Force light mode background colors on editor panels and pages */
+.docx-editor {
+  background-color: #f8f9fa !important;
+  color: #202124 !important;
+}
+
+.docx-editor-page {
+  background-color: #ffffff !important;
+  color: #202124 !important;
+  border-color: #e0e0e0 !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06) !important;
+}
+
+.ProseMirror {
+  background-color: #ffffff !important;
+  color: #202124 !important;
+}
+
+/* Page Centering Alignments */
+.docx-editor-page {
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+
+.paged-editor__container,
+.paged-editor__pages {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  width: 100% !important;
+}

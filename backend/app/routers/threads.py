@@ -106,7 +106,8 @@ async def send_message(thread_id: str, payload: MessageCreate, db: Session = Dep
         if USE_MOCK_LLM:
             try:
                 from app.mock_showcase.mock_tools import think as mock_think, search_kb as mock_search_kb, check_entitlements as mock_check_entitlements
-                graph_tools = [mock_think, mock_search_kb, mock_check_entitlements]
+                from app.agent import edit_document
+                graph_tools = [mock_think, mock_search_kb, mock_check_entitlements, edit_document]
             except Exception as e:
                 print("Failed to load mock_tools:", e)
                 
@@ -208,6 +209,8 @@ async def send_message(thread_id: str, payload: MessageCreate, db: Session = Dep
         reasoning_steps = []
         has_streamed_text = False
 
+        from app.services.document_service import current_thread_id_var
+        token = current_thread_id_var.set(thread_id)
         try:
             # stream_mode="updates" streams state modifications node by node
             async for update in agent_graph.astream(state, stream_mode="updates"):
@@ -317,6 +320,8 @@ async def send_message(thread_id: str, payload: MessageCreate, db: Session = Dep
 
         except Exception as err:
             print("Error encountered in agent graph stream:", err)
+        finally:
+            current_thread_id_var.reset(token)
 
         # 5. Persist final assistant parts to database
         db_assistant = Message(
@@ -334,3 +339,40 @@ async def send_message(thread_id: str, payload: MessageCreate, db: Session = Dep
             db_new.close()
 
     return StreamingResponse(sse_generator(), media_type="text/event-stream")
+
+@router.get("/threads/{thread_id}/document")
+def get_document(thread_id: str, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    # Verify thread exists and belongs to user
+    thread = db.query(Thread).filter(Thread.id == thread_id, Thread.user_id == current_user["user_id"]).first()
+    if not thread:
+        raise HTTPException(status_code=404, detail="Thread not found")
+    
+    from app.services.document_service import get_document_bytes
+    from fastapi.responses import Response
+    
+    try:
+        data = get_document_bytes(thread_id)
+        return Response(
+            content=data,
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            headers={"Content-Disposition": f"attachment; filename=thread_{thread_id}.docx"}
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to load document: {str(e)}")
+
+@router.put("/threads/{thread_id}/document")
+async def put_document(thread_id: str, request: Request, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    # Verify thread exists and belongs to user
+    thread = db.query(Thread).filter(Thread.id == thread_id, Thread.user_id == current_user["user_id"]).first()
+    if not thread:
+        raise HTTPException(status_code=404, detail="Thread not found")
+    
+    from app.services.document_service import save_document_bytes
+    
+    try:
+        data = await request.body()
+        save_document_bytes(thread_id, data)
+        return {"status": "success", "message": "Document updated successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save document: {str(e)}")
+

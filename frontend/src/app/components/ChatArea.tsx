@@ -48,16 +48,19 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
           </span>
         </div>
 
-        {/* Theme Switcher Button */}
-        <button
-          onClick={onToggleTheme}
-          className="apcot-theme-toggle-btn"
-          aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-          title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-        >
-          {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+          {/* Theme Switcher Button */}
+          <button
+            onClick={onToggleTheme}
+            className="apcot-theme-toggle-btn"
+            aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+            title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+          >
+            {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
+          </button>
+        </div>
       </header>
+
 
       {/* Main viewport area */}
       {isLoadingMessages ? (

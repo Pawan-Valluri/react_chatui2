@@ -82,6 +82,53 @@ CONVERSATION_ROUTES = {
         )
     },
     
+    "edit_document": {
+        "thoughts": [
+            "Analyzing user request to modify workspace document...",
+            "Initializing backend python-docx write operation...",
+            "Enforcing OOXML Tracked Changes setting for APCOT Assistant..."
+        ],
+        "tool_call": {
+            "name": "edit_document",
+            "args": {"action": "append", "text": "APCOT Assistant has automatically appended this paragraph containing session metadata and guidelines validation details."},
+            "result": "Successfully updated document: append action completed."
+        },
+        "thoughts_phase_2": [
+            "Document edit tool completed successfully.",
+            "Formulating confirmation response for user..."
+        ],
+        "response": (
+            "I have updated your document workspace by appending a new paragraph: "
+            "\"APCOT Assistant has automatically appended this paragraph containing session metadata and guidelines validation details.\". "
+            "This change was saved to the backend Single Source of Truth and marked as a tracked revision by **APCOT Assistant**. "
+            "The Workspace panel on the right has automatically reloaded to show the update!"
+        )
+    },
+    "add_table": {
+        "thoughts": [
+            "Parsing user prompt for document table layout...",
+            "Preparing JSON cell matrix structure...",
+            "Invoking edit_document tool with table action in document_service..."
+        ],
+        "tool_call": {
+            "name": "edit_document",
+            "args": {
+                "action": "table",
+                "text": '[["Feature", "Status", "Owner"], ["SSO Login", "Complete", "Charles"], ["Track Changes", "In Progress", "APCOT Assistant"], ["Tables", "Added", "APCOT Assistant"]]'
+            },
+            "result": "Successfully updated document: table action completed."
+        },
+        "thoughts_phase_2": [
+            "Table created successfully in docx file.",
+            "Synthesizing success message for chat response..."
+        ],
+        "response": (
+            "I have updated your document workspace by generating and inserting a clean status grid table "
+            "(containing 4 rows and 3 columns) using the OOXML editor settings. "
+            "You should see it load inside the Workspace panel on your right!"
+        )
+    },
+    
     "default": {
         "thoughts": [
             "Analyzing input and matching with graph handlers..."
@@ -90,7 +137,7 @@ CONVERSATION_ROUTES = {
             "Thank you for your message: \"{input_text}\". I have processed your input through my "
             "LangGraph state machine! You can see my thought traces (reasoning) and tool execution cards "
             "above. If you ask me to 'search the knowledge base', I can execute a simulated database tool "
-            "for you. Let me know how I can help!"
+            "for you. Or try asking me to 'edit document' or 'write a summary' to see how I modify your document canvas! Let me know how I can help!"
         )
     }
 }

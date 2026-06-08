@@ -1,12 +1,13 @@
 # backend/agent.py
 
-from typing import Annotated, List, TypedDict, Any, Literal
+from typing import Annotated, List, TypedDict, Any, Literal, Optional
 from langchain_core.tools import tool
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import BaseMessage, AIMessage, HumanMessage, ToolMessage
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
+from app.services.document_service import current_thread_id_var
 
 # Define clean enterprise Agent State structure
 class AgentState(TypedDict):
@@ -42,6 +43,21 @@ async def check_entitlements(resource: str) -> str:
         "Granted full administration, thread deletion, and query permissions."
     )
 
+@tool
+def edit_document(action: str, text: str, paragraph_index: Optional[int] = None) -> str:
+    """Modify the workspace document for the active conversation.
+    - action: 'append' (adds text as new paragraph), 'replace' (replaces paragraph at paragraph_index), 'insert' (inserts paragraph at paragraph_index), 'clear' (clears all paragraphs and adds text).
+    - text: the text content to apply.
+    - paragraph_index: (optional) target 0-indexed paragraph index (required for 'replace' and 'insert').
+    """
+    try:
+        thread_id = current_thread_id_var.get()
+    except LookupError:
+        return "Error: No active conversation context found."
+    
+    from app.services.document_service import apply_agent_edit
+    return apply_agent_edit(thread_id, action, text, paragraph_index)
+
 # ──────────────────────────────────────────────────────────────────────────
 # 🔀 The Dynamic Conditional Router
 # ──────────────────────────────────────────────────────────────────────────
@@ -74,7 +90,7 @@ def create_agent_graph(llm: BaseChatModel, tools: List[Any] = None):
     
     # 1. Default to core native production tools if none are passed
     if tools is None:
-        tools = [think, search_kb, check_entitlements]
+        tools = [think, search_kb, check_entitlements, edit_document]
         
     llm_with_tools = llm.bind_tools(tools)
 

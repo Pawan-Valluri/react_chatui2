@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { Sidebar } from "./components/Sidebar";
 import { ChatArea } from "./components/ChatArea";
+import { Workspace } from "./components/Workspace";
+import { DocumentWorkspace } from "./components/DocumentWorkspace";
 import "./styles/App.scss";
 
 interface Thread {
@@ -31,6 +33,16 @@ export function App({ config }: AppProps = {}) {
     const saved = localStorage.getItem("apcot-theme");
     return saved === "light" || saved === "dark" ? saved : "dark";
   });
+
+  const [isWorkspaceCollapsed, setIsWorkspaceCollapsed] = useState(true);
+  const [workspaceWidth, setWorkspaceWidth] = useState(450);
+
+  // Auto-expand Workspace when a thread is loaded/selected
+  useEffect(() => {
+    if (currentThreadId) {
+      setIsWorkspaceCollapsed(false);
+    }
+  }, [currentThreadId]);
 
   // Keep HTML attribute and localStorage in sync with theme state
   useEffect(() => {
@@ -276,6 +288,24 @@ export function App({ config }: AppProps = {}) {
         onThreadUpdated={fetchThreads}
         starterPrompts={starterPrompts}
       />
+
+      {/* Workspace Panel */}
+      <Workspace
+        isCollapsed={isWorkspaceCollapsed}
+        onToggleCollapse={() => setIsWorkspaceCollapsed((prev) => !prev)}
+        width={workspaceWidth}
+        onWidthChange={setWorkspaceWidth}
+      >
+        {currentThreadId && (
+          <DocumentWorkspace
+            threadId={currentThreadId}
+            messages={currentThreadMessages}
+            userProfile={userProfile}
+            width={workspaceWidth}
+          />
+        )}
+      </Workspace>
+
     </div>
   );
 }

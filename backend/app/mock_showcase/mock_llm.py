@@ -117,6 +117,10 @@ class MockChatModel(BaseChatModel):
         invoc_id = uuid.uuid4().hex[:8]
         if any(kw in user_prompt for kw in ["multi", "multiple", "advanced", "complex", "step"]):
             ai_message = self._handle_multistep_route(thought_count, system_tool_responses, invoc_id)
+        elif any(kw in user_prompt for kw in ["table", "grid", "rows", "cols", "columns"]):
+            ai_message = self._handle_add_table_route(thought_count, system_tool_responses, invoc_id)
+        elif any(kw in user_prompt for kw in ["document", "edit", "write", "summary", "paragraph", "append"]):
+            ai_message = self._handle_edit_document_route(thought_count, system_tool_responses, invoc_id)
         elif any(kw in user_prompt for kw in ["search", "kb", "knowledge", "help", "guide", "info", "apcot"]):
             ai_message = self._handle_search_route(thought_count, system_tool_responses, messages[0].content, invoc_id)
         elif any(kw in user_prompt for kw in ["hello", "hi"]):
@@ -204,6 +208,100 @@ class MockChatModel(BaseChatModel):
                 user_id=self.user_id
             )
             return AIMessage(content=final_text)
+
+    def _handle_edit_document_route(self, thought_count: int, system_tool_responses: int, invoc_id: str) -> AIMessage:
+        route = CONVERSATION_ROUTES["edit_document"]
+        
+        # Phase 1: 3 Consecutive Thought Steps
+        if thought_count < 3:
+            thought_text = route["thoughts"][thought_count]
+            return AIMessage(
+                content="",
+                tool_calls=[{
+                    "name": "think",
+                    "args": {"thought": thought_text},
+                    "id": f"tc_think_doc_{thought_count}_{invoc_id}",
+                    "type": "tool_call"
+                }]
+            )
+            
+        # Tool Call: edit_document
+        elif thought_count == 3 and system_tool_responses == 0:
+            tc = route["tool_call"]
+            return AIMessage(
+                content="",
+                tool_calls=[{
+                    "name": tc["name"],
+                    "args": tc["args"],
+                    "id": f"tc_edit_doc_{invoc_id}",
+                    "type": "tool_call"
+                }]
+            )
+            
+        # Phase 2: 2 Consecutive Thought Steps after edit_document tool execution
+        elif system_tool_responses == 1 and thought_count < 5:
+            idx = thought_count - 3
+            thought_text = route["thoughts_phase_2"][idx]
+            return AIMessage(
+                content="",
+                tool_calls=[{
+                    "name": "think",
+                    "args": {"thought": thought_text},
+                    "id": f"tc_think_doc_p2_{idx}_{invoc_id}",
+                    "type": "tool_call"
+                }]
+            )
+            
+        # Final response
+        else:
+            return AIMessage(content=route["response"])
+
+    def _handle_add_table_route(self, thought_count: int, system_tool_responses: int, invoc_id: str) -> AIMessage:
+        route = CONVERSATION_ROUTES["add_table"]
+        
+        # Phase 1: 3 Consecutive Thought Steps
+        if thought_count < 3:
+            thought_text = route["thoughts"][thought_count]
+            return AIMessage(
+                content="",
+                tool_calls=[{
+                    "name": "think",
+                    "args": {"thought": thought_text},
+                    "id": f"tc_think_tbl_{thought_count}_{invoc_id}",
+                    "type": "tool_call"
+                }]
+            )
+            
+        # Tool Call: edit_document (table action)
+        elif thought_count == 3 and system_tool_responses == 0:
+            tc = route["tool_call"]
+            return AIMessage(
+                content="",
+                tool_calls=[{
+                    "name": tc["name"],
+                    "args": tc["args"],
+                    "id": f"tc_edit_tbl_{invoc_id}",
+                    "type": "tool_call"
+                }]
+            )
+            
+        # Phase 2: 2 Consecutive Thought Steps after tool call
+        elif system_tool_responses == 1 and thought_count < 5:
+            idx = thought_count - 3
+            thought_text = route["thoughts_phase_2"][idx]
+            return AIMessage(
+                content="",
+                tool_calls=[{
+                    "name": "think",
+                    "args": {"thought": thought_text},
+                    "id": f"tc_think_tbl_p2_{idx}_{invoc_id}",
+                    "type": "tool_call"
+                }]
+            )
+            
+        # Final response
+        else:
+            return AIMessage(content=route["response"])
 
     def _handle_search_route(self, thought_count: int, system_tool_responses: int, original_prompt: str, invoc_id: str) -> AIMessage:
         route = CONVERSATION_ROUTES["search"]

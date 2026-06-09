@@ -1,0 +1,75 @@
+/* ==========================================================================
+   3. MAIN CHAT AREA VIEWPORT
+   ========================================================================== */
+
+@use "./variables" as *;
+@use "./mixins" as *;
+
+.apcot-main-container {
+  flex: 1;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+  z-index: 1;
+}
+
+// Floating Glass Header
+.apcot-chat-header {
+  height: 64px;
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border-color);
+  position: relative;
+  z-index: 5;
+  @include glass-panel(var(--glass-bg), var(--border-color), none, $glass-blur);
+}
+
+.apcot-chat-header-title {
+  font-family: "Guardian", "BentonSans", serif;
+  font-weight: 700;
+  font-size: 1.05rem;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  .apcot-chat-header-subtitle {
+    font-family: "BentonSans", sans-serif;
+    font-size: 0.75rem;
+    font-weight: 400;
+    color: var(--text-muted);
+  }
+}
+
+// Theme Toggle
+.apcot-theme-toggle-btn {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--text-primary);
+  background-color: var(--card-bg);
+  border: 1px solid var(--border-color);
+  transition: $transition-bounce;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+
+  &:hover {
+    background-color: var(--card-hover);
+    color: var(--accent-light);
+    border-color: var(--accent-light);
+    transform: scale(1.06) rotate(15deg);
+    box-shadow: var(--glass-glow);
+  }
+
+  svg {
+    width: 16px;
+    height: 16px;
+  }
+}

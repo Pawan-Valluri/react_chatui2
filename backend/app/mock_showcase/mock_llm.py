@@ -86,32 +86,31 @@ class MockChatModel(BaseChatModel):
             print(f"  [{idx}] {role}: \"{snippet}\"{details_str}")
         print("=========================================================================================\n")
 
-        # 1. Identify the user's initial prompt
+        # 1. Identify the user's latest prompt (iterating backwards from the end)
         user_prompt = ""
-        for m in messages:
+        latest_human_idx = -1
+        for idx in range(len(messages) - 1, -1, -1):
+            m = messages[idx]
             if isinstance(m, HumanMessage):
+                latest_human_idx = idx
                 if isinstance(m.content, str):
                     user_prompt = m.content.lower()
                 elif isinstance(m.content, list) and len(m.content) > 0:
                     user_prompt = m.content[0].get("text", "").lower()
                 break
 
-        # 2. Extract conversation history details
-        assistant_messages = [m for m in messages if isinstance(m, AIMessage)]
-        
-        # Count completed 'think' tool calls
+        # 2. Extract conversation history details starting from the latest human message
         thought_count = 0
-        for m in assistant_messages:
-            if m.tool_calls:
-                for tc in m.tool_calls:
-                    if tc["name"] == "think":
-                        thought_count += 1
-                        
-        # Count actual system tool responses
         system_tool_responses = 0
-        for m in messages:
-            if isinstance(m, ToolMessage) and m.name != "think":
-                system_tool_responses += 1
+        
+        if latest_human_idx != -1:
+            for m in messages[latest_human_idx + 1:]:
+                if isinstance(m, AIMessage) and m.tool_calls:
+                    for tc in m.tool_calls:
+                        if tc["name"] == "think":
+                            thought_count += 1
+                elif isinstance(m, ToolMessage) and m.name != "think":
+                    system_tool_responses += 1
 
         # 3. Route decision trees based on the static mock_routes schemas
         invoc_id = uuid.uuid4().hex[:8]

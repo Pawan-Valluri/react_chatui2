@@ -20,6 +20,7 @@ interface ChatAreaProps {
   theme: "light" | "dark";
   onToggleTheme: () => void;
   onThreadUpdated?: () => void;
+  onDocumentUpdated?: () => void;
   starterPrompts?: any[];
 }
 
@@ -33,6 +34,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
   theme,
   onToggleTheme,
   onThreadUpdated,
+  onDocumentUpdated,
   starterPrompts
 }) => {
   const activeThread = threads.find(t => t.id === currentThreadId);
@@ -85,6 +87,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
           pendingPrompt={pendingPrompt}
           onClearPendingPrompt={onClearPendingPrompt}
           onThreadUpdated={onThreadUpdated}
+          onDocumentUpdated={onDocumentUpdated}
           starterPrompts={starterPrompts}
         />
       )}

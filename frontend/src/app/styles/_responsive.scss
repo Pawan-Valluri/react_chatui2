@@ -1,0 +1,29 @@
+/* ==========================================================================
+   9. RESPONSIVE UTILITIES
+   ========================================================================== */
+
+@use "./variables" as *;
+@use "./mixins" as *;
+
+@media (max-width: 768px) {
+  .apcot-sidebar {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    transform: translateX(-100%);
+    box-shadow: 0 0 30px rgba(0, 0, 0, 0.3);
+    
+    &.open {
+      transform: translateX(0);
+    }
+  }
+
+  .apcot-suggestion-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .apcot-chat-viewport {
+    padding: 16px 12px 110px 12px;
+  }
+}

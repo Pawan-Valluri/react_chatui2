@@ -1,0 +1,155 @@
+/* ==========================================================================
+   5. MESSAGE BUBBLES
+   ========================================================================== */
+
+@use "./variables" as *;
+@use "./mixins" as *;
+
+.apcot-chat-messages-container {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+  padding: 16px 0;
+}
+
+.apcot-msg-root {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  animation: slideUp var(--transition-normal);
+
+  // User Message
+  &.user-msg {
+    align-items: flex-end;
+  }
+
+  // Assistant Message
+  &.assistant-msg {
+    align-items: flex-start;
+  }
+}
+
+// User Bubble Design
+.apcot-user-bubble-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  max-width: 75%;
+}
+
+.apcot-user-bubble {
+  background-color: var(--bubble-user-bg);
+  color: var(--bubble-user-text);
+  padding: 12px 18px;
+  border-radius: $border-radius-lg $border-radius-lg 4px $border-radius-lg;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  box-shadow: 0 4px 15px rgba(0, 111, 207, 0.15);
+  font-weight: 400;
+  
+  [data-theme="light"] & {
+    box-shadow: 0 4px 15px rgba(0, 111, 207, 0.08);
+  }
+}
+
+.apcot-user-message-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+  opacity: 0;
+  transition: opacity $duration-fast $transition-curve;
+  padding: 0 4px;
+}
+
+.apcot-user-bubble-wrapper:hover .apcot-user-message-actions {
+  opacity: 1;
+}
+
+.apcot-message-edit-btn {
+  background-color: var(--card-bg);
+  border: 1px solid var(--border-color);
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 5px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: $transition-fast;
+
+  &:hover {
+    background-color: var(--card-hover);
+    color: var(--text-primary);
+    border-color: var(--accent-light);
+  }
+
+  svg {
+    width: 13px;
+    height: 13px;
+  }
+}
+
+.apcot-branch-picker {
+  display: flex;
+  align-items: center;
+  background-color: var(--card-bg);
+  border: 1px solid var(--border-color);
+  padding: 3px 8px;
+  border-radius: 12px;
+  gap: 6px;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.apcot-branch-picker-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 1px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: $transition-fast;
+
+  &:hover:not(:disabled) {
+    color: var(--text-primary);
+  }
+
+  &:disabled {
+    opacity: 0.25;
+    cursor: not-allowed;
+  }
+
+  svg {
+    width: 10px;
+    height: 10px;
+  }
+}
+
+// Assistant Body & Markdown
+.apcot-assistant-body {
+  width: 100%;
+  padding-left: 8px;
+}
+
+.apcot-assistant-text {
+  font-size: 0.96rem;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  font-weight: 400;
+
+  p {
+    margin-bottom: 12px;
+    &:last-child {
+      margin-bottom: 0;
+    }
+  }
+
+  strong {
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+}

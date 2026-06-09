@@ -9,6 +9,7 @@ interface DocumentWorkspaceProps {
   messages: any[];
   userProfile?: any;
   width: number;
+  documentRevision: number;
 }
 
 export const DocumentWorkspace: React.FC<DocumentWorkspaceProps> = ({
@@ -16,6 +17,7 @@ export const DocumentWorkspace: React.FC<DocumentWorkspaceProps> = ({
   messages,
   userProfile,
   width,
+  documentRevision,
 }) => {
   const editorRef = useRef<any>(null);
   
@@ -29,6 +31,7 @@ export const DocumentWorkspace: React.FC<DocumentWorkspaceProps> = ({
     threadId,
     messages,
     editorRef,
+    documentRevision,
   });
 
   return (
@@ -64,6 +67,7 @@ export const DocumentWorkspace: React.FC<DocumentWorkspaceProps> = ({
             onChange={handleLocalChange}
             userProfile={userProfile}
             width={width}
+            documentRevision={documentRevision}
           />
         ) : (
           <div className="document-loading-overlay">

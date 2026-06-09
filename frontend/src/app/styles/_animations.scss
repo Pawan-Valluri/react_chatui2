@@ -1,0 +1,32 @@
+/* ==========================================================================
+   8. KEYFRAMES & LOADING SPINNERS
+   ========================================================================== */
+
+@use "./variables" as *;
+@use "./mixins" as *;
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.apcot-spinner {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+// Custom spin-up helper for SVGs
+.apcot-spinner-step {
+  animation: spin 1.2s cubic-bezier(0.19, 1, 0.22, 1) infinite;
+}

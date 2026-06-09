@@ -86,6 +86,7 @@ interface CustomChatProps {
   pendingPrompt: string | null;
   onClearPendingPrompt: () => void;
   onThreadUpdated?: () => void;
+  onDocumentUpdated?: () => void;
   starterPrompts?: any[];
 }
 
@@ -606,6 +607,7 @@ export const CustomChat: React.FC<CustomChatProps> = ({
   pendingPrompt,
   onClearPendingPrompt,
   onThreadUpdated,
+  onDocumentUpdated,
   starterPrompts
 }) => {
   // Freeze initialMessages inside local state to block reactive resets from parent re-renders
@@ -670,7 +672,13 @@ export const CustomChat: React.FC<CustomChatProps> = ({
         let buffer = "";
         while (true) {
           const { done, value } = await reader.read();
-          if (done) break;
+          if (done) {
+            // Stream completed, notify parent to fetch document in case tool finished
+            setTimeout(() => {
+              if (onDocumentUpdated) onDocumentUpdated();
+            }, 200);
+            break;
+          }
 
           buffer += decoder.decode(value, { stream: true });
           const lines = buffer.split("\n");
@@ -733,6 +741,11 @@ export const CustomChat: React.FC<CustomChatProps> = ({
                     result: tr.result,
                     status: "complete"
                   };
+                  // Reactive check: if edit_document completed, notify parent instantly
+                  if (toolCallInfo.toolName === "edit_document" && onDocumentUpdated) {
+                    console.log("edit_document tool call completed. Notifying document reload.");
+                    onDocumentUpdated();
+                  }
                 }
               }
 

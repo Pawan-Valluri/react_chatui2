@@ -7,6 +7,7 @@ interface UseDocumentSyncProps {
   messages: any[];
   editorRef: React.RefObject<any>;
   syncIntervalMs?: number; // Configurable periodic sync interval
+  documentRevision: number;
 }
 
 export function useDocumentSync({
@@ -14,6 +15,7 @@ export function useDocumentSync({
   messages,
   editorRef,
   syncIntervalMs = 10000, // Default to 10 seconds, fully configurable
+  documentRevision,
 }: UseDocumentSyncProps) {
   const [documentBuffer, setDocumentBuffer] = useState<ArrayBuffer | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -102,7 +104,7 @@ export function useDocumentSync({
     }, 2500);
   }, [uploadDocument]);
 
-  // Initial fetch on mount or thread change
+  // Initial fetch on mount, thread change, or documentRevision change
   useEffect(() => {
     fetchDocument(true);
 
@@ -112,7 +114,7 @@ export function useDocumentSync({
       if (periodicTimerRef.current) clearInterval(periodicTimerRef.current);
       hasUnsavedEditsRef.current = false;
     };
-  }, [threadId, fetchDocument]);
+  }, [threadId, fetchDocument, documentRevision]);
 
   // Configurable Periodic sync heartbeat (saves changes every N seconds if there are unsaved edits)
   useEffect(() => {

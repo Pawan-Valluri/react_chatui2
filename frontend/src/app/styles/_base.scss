@@ -1,0 +1,58 @@
+/* ==========================================================================
+   1. GLOBAL LAYOUTS & BASE REDEFINITION
+   ========================================================================== */
+
+@use "./variables" as *;
+@use "./mixins" as *;
+
+// --------------------------------------------------------------------------
+// 1. GLOBAL LAYOUTS & BASE REDEFITION
+// --------------------------------------------------------------------------
+body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: "BentonSans", "Helvetica Neue", -apple-system, BlinkMacSystemFont, sans-serif;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  height: 100vh;
+  width: 100vw;
+  transition: background-color $duration-normal $transition-curve, color $duration-normal $transition-curve;
+}
+
+.apcot-app-shell {
+  display: flex;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+  position: relative;
+  background-color: var(--bg-primary);
+  transition: background-color $duration-normal $transition-curve;
+
+  // Subtle background gradient glow behind the glass panels (Colors.md guideline compliancy)
+  &::before {
+    content: "";
+    position: absolute;
+    top: -15%;
+    left: -10%;
+    width: 60%;
+    height: 70%;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(0, 111, 207, 0.05) 0%, rgba(0, 23, 90, 0.01) 70%, transparent 100%);
+    z-index: 0;
+    pointer-events: none;
+  }
+
+  &::after {
+    content: "";
+    position: absolute;
+    bottom: -15%;
+    right: -10%;
+    width: 60%;
+    height: 70%;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(102, 169, 226, 0.04) 0%, rgba(0, 23, 90, 0.01) 70%, transparent 100%);
+    z-index: 0;
+    pointer-events: none;
+  }
+}

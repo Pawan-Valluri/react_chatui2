@@ -1,0 +1,322 @@
+/* ==========================================================================
+   6. THOUGHT PROCESS & TOOL CARDS (COLLAPSIBLE TRACES)
+   ========================================================================== */
+
+@use "./variables" as *;
+@use "./mixins" as *;
+
+.apcot-unified-steps-card {
+  background-color: transparent;
+  border: none;
+  border-radius: 0;
+  overflow: hidden;
+  margin: 4px 0 12px 0;
+  transition: $transition-normal;
+}
+
+.apcot-unified-steps-header {
+  padding: 4px 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background-color: transparent;
+  border-bottom: none;
+  transition: color $duration-fast $transition-curve;
+  cursor: pointer;
+  user-select: none;
+  font-size: 0.76rem;
+  font-weight: 500;
+  color: var(--text-muted);
+
+  .apcot-unified-steps-card.open & {
+    border-bottom: none;
+    background-color: transparent;
+    color: var(--text-secondary);
+  }
+
+  &:hover {
+    color: var(--accent-light);
+    background-color: transparent;
+  }
+}
+
+.apcot-unified-steps-header-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: inherit;
+  font-weight: inherit;
+}
+
+.apcot-steps-loader-container {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.apcot-steps-loader {
+  width: 13px;
+  height: 13px;
+  stroke: var(--accent-light);
+  stroke-width: 2.5px;
+  flex-shrink: 0;
+}
+
+.apcot-steps-complete-container {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.apcot-steps-complete-icon {
+  width: 13px;
+  height: 13px;
+  stroke: #10B981; // Success emerald green
+  stroke-width: 2.5px;
+  flex-shrink: 0;
+}
+
+.apcot-unified-steps-header-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.apcot-active-step-type {
+  font-size: 0.72rem;
+  color: var(--accent-light);
+  font-weight: 500;
+  display: inline-block;
+
+  &.complete {
+    color: var(--text-muted);
+  }
+}
+
+.apcot-steps-toggle-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform var(--transition-normal);
+  color: var(--text-muted);
+
+  svg {
+    width: 13px;
+    height: 13px;
+  }
+
+  .apcot-unified-steps-card.open & {
+    transform: rotate(180deg);
+  }
+}
+
+// Collapsible body wrapper
+.apcot-unified-steps-body-wrapper {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows $duration-normal $transition-curve;
+  overflow: hidden;
+
+  .apcot-unified-steps-card.open & {
+    grid-template-rows: 1fr;
+  }
+}
+
+.apcot-unified-steps-body {
+  min-height: 0;
+  padding: 0;
+  background-color: transparent;
+  transition: padding $duration-normal $transition-curve;
+
+  .apcot-unified-steps-card.open & {
+    padding: 8px 0 12px 0;
+  }
+}
+
+// REASONING BLOCK
+.apcot-reasoning-card {
+  margin-bottom: 10px;
+  border-radius: $border-radius-md;
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-secondary);
+  overflow: hidden;
+  transition: $transition-normal;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+
+  &.open {
+    border-color: rgba(0, 111, 207, 0.15);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+  }
+}
+
+.apcot-reasoning-header {
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  border-bottom: 1px solid transparent;
+  transition: background-color $duration-fast $transition-curve, border-color $duration-normal $transition-curve;
+
+  .apcot-reasoning-card.open & {
+    border-bottom-color: var(--border-color);
+    background-color: var(--bg-tertiary);
+  }
+}
+
+.apcot-reasoning-title-section {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  svg {
+    width: 14px;
+    height: 14px;
+    color: var(--accent-light);
+  }
+}
+
+.apcot-reasoning-toggle-icon {
+  transition: transform var(--transition-normal);
+  color: var(--text-muted);
+
+  svg {
+    width: 12px;
+    height: 12px;
+  }
+
+  .apcot-reasoning-card.open & {
+    transform: rotate(180deg);
+  }
+}
+
+.apcot-reasoning-body-wrapper {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows $duration-normal $transition-curve;
+  overflow: hidden;
+
+  .apcot-reasoning-card.open & {
+    grid-template-rows: 1fr;
+  }
+}
+
+.apcot-reasoning-body {
+  min-height: 0;
+  padding: 0 14px;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+  white-space: pre-wrap;
+  font-family: var(--dls-monospace-font-family, monospace);
+  transition: padding $duration-normal $transition-curve;
+
+  .apcot-reasoning-card.open & {
+    padding: 12px 14px;
+  }
+}
+
+// TOOL BLOCK
+.apcot-tool-card {
+  @extend .apcot-reasoning-card;
+
+  &.open {
+    border-color: rgba(102, 169, 226, 0.2);
+  }
+}
+
+.apcot-tool-header {
+  @extend .apcot-reasoning-header;
+  
+  .apcot-tool-card.open & {
+    border-bottom-color: var(--border-color);
+    background-color: var(--bg-tertiary);
+  }
+}
+
+.apcot-tool-title-section {
+  @extend .apcot-reasoning-title-section;
+
+  svg {
+    color: #10B981; // emerald
+  }
+}
+
+.apcot-tool-status-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 99px;
+  text-transform: uppercase;
+
+  &.running {
+    background-color: rgba(0, 111, 207, 0.1);
+    color: var(--accent-light);
+  }
+
+  &.complete {
+    background-color: rgba(16, 185, 129, 0.1);
+    color: #10B981;
+  }
+
+  svg {
+    width: 10px;
+    height: 10px;
+  }
+}
+
+.apcot-tool-body-wrapper {
+  @extend .apcot-reasoning-body-wrapper;
+  
+  .apcot-tool-card.open & {
+    grid-template-rows: 1fr;
+  }
+}
+
+.apcot-tool-details {
+  min-height: 0;
+  padding: 0 14px;
+  font-size: 0.8rem;
+  transition: padding $duration-normal $transition-curve;
+
+  .apcot-tool-card.open & {
+    padding: 12px 14px;
+  }
+}
+
+.apcot-tool-args {
+  color: var(--text-secondary);
+  font-family: var(--dls-monospace-font-family, monospace);
+  background-color: var(--bg-secondary);
+  padding: 6px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--border-color);
+}
+
+.apcot-tool-result-header {
+  margin-top: 10px;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-size: 0.76rem;
+}
+
+.apcot-tool-result {
+  @extend .apcot-tool-args;
+  margin-top: 4px;
+  color: var(--text-muted);
+  max-height: 160px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  @include premium-scrollbar;
+}

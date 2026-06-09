@@ -8,6 +8,7 @@ interface DocxEditorWrapperProps {
   onChange: () => void;
   userProfile?: any;
   width: number;
+  documentRevision: number;
 }
 
 export const DocxEditorWrapper: React.FC<DocxEditorWrapperProps> = ({
@@ -16,6 +17,7 @@ export const DocxEditorWrapper: React.FC<DocxEditorWrapperProps> = ({
   onChange,
   userProfile,
   width,
+  documentRevision,
 }) => {
   const userName = userProfile?.fullname || userProfile?.uid || "Beyond Developer";
 
@@ -91,6 +93,7 @@ export const DocxEditorWrapper: React.FC<DocxEditorWrapperProps> = ({
         } as React.CSSProperties}
       >
         <DocxEditor
+          key={documentRevision}
           ref={editorRef}
           documentBuffer={documentBuffer}
           mode="editing"

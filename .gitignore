@@ -54,3 +54,6 @@ backend/apcot_chat.db
 # Intranet Guidelines & Specifications
 labs/
 
+# Local session storage
+backend/storage/
+

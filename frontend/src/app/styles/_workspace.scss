@@ -1,0 +1,184 @@
+/* ==========================================================================
+   10. MODULAR WORKSPACE PANEL (RIGHT SIDEBAR)
+   ========================================================================== */
+
+@use "./variables" as *;
+@use "./mixins" as *;
+
+.apcot-workspace-panel {
+  height: 100%;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  z-index: 10;
+  position: relative;
+  border-left: 1px solid var(--border-color);
+  transition: width $duration-normal $transition-curve, background-color $duration-normal $transition-curve, border-color $duration-normal $transition-curve;
+  @include glass-panel(var(--glass-bg), var(--border-color), var(--glass-shadow), $glass-blur);
+
+  &.resizing {
+    transition: none !important;
+  }
+
+  &.collapsed {
+    width: 0px !important;
+    border-left: 0px solid transparent !important;
+    overflow: hidden;
+    pointer-events: none;
+
+    * {
+      display: none !important;
+    }
+  }
+}
+
+.workspace-resize-handle {
+  position: absolute;
+  top: 0;
+  left: -3px;
+  width: 6px;
+  height: 100%;
+  cursor: ew-resize;
+  z-index: 20;
+  transition: background-color $duration-fast;
+
+  &:hover, &.dragging {
+    background-color: var(--accent-light);
+    opacity: 0.5;
+  }
+}
+
+.workspace-header {
+  height: 64px;
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+
+.workspace-header-title {
+  font-family: "Guardian", "BentonSans", serif;
+  font-weight: 700;
+  font-size: 1.05rem;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+
+  svg {
+    margin-right: 8px; /* Precise spacing between Sparkles icon and "Workspace" text */
+  }
+
+  .workspace-header-subtitle {
+    font-family: "BentonSans", sans-serif;
+    font-size: 0.75rem;
+    font-weight: 400;
+    color: var(--text-muted);
+    margin-left: 6px; /* Precise spacing between "Workspace" text and "Panel" subtitle */
+  }
+}
+
+.workspace-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.workspace-close-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: $transition-normal;
+
+  &:hover {
+    background-color: var(--card-hover);
+    color: var(--text-primary);
+  }
+
+  svg {
+    width: 16px;
+    height: 16px;
+  }
+}
+
+.workspace-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px;
+  position: relative;
+  @include premium-scrollbar;
+
+  &:has(.document-workspace-container) {
+    padding: 0;
+    overflow: hidden;
+  }
+}
+
+.workspace-empty-state {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: var(--text-muted);
+  padding: 40px 20px;
+  animation: slideUp var(--transition-normal);
+
+  .workspace-empty-icon {
+    width: 48px;
+    height: 48px;
+    color: var(--accent-light);
+    opacity: 0.6;
+    margin-bottom: 16px;
+  }
+
+  .workspace-empty-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+  }
+
+  .workspace-empty-desc {
+    font-size: 0.85rem;
+    max-width: 280px;
+    line-height: 1.5;
+  }
+}
+
+// --------------------------------------------------------------------------
+// WORKSPACE EDGE TOGGLE BUTTON
+// --------------------------------------------------------------------------
+.workspace-edge-toggle {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 24px;
+  height: 48px;
+  border-radius: 6px 0 0 6px;
+  background-color: var(--accent-light);
+  border: 1px solid var(--accent-light);
+  border-right: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 50;
+  color: #fff;
+  box-shadow: -2px 0 12px rgba(0, 111, 207, 0.3);
+  transition: right $duration-normal $transition-curve, background-color $duration-fast, box-shadow $duration-fast;
+
+  &:hover {
+    background-color: #005bb5;
+    box-shadow: -4px 0 16px rgba(0, 111, 207, 0.4);
+  }
+}

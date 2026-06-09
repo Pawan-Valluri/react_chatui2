@@ -36,11 +36,13 @@ export function App({ config }: AppProps = {}) {
 
   const [isWorkspaceCollapsed, setIsWorkspaceCollapsed] = useState(true);
   const [workspaceWidth, setWorkspaceWidth] = useState(450);
+  const [documentRevision, setDocumentRevision] = useState(0);
 
   // Auto-expand Workspace when a thread is loaded/selected
   useEffect(() => {
     if (currentThreadId) {
       setIsWorkspaceCollapsed(false);
+      setDocumentRevision(0); // Reset revision on thread change
     }
   }, [currentThreadId]);
 
@@ -286,6 +288,7 @@ export function App({ config }: AppProps = {}) {
         theme={theme}
         onToggleTheme={handleToggleTheme}
         onThreadUpdated={fetchThreads}
+        onDocumentUpdated={() => setDocumentRevision(prev => prev + 1)}
         starterPrompts={starterPrompts}
       />
 
@@ -302,6 +305,7 @@ export function App({ config }: AppProps = {}) {
             messages={currentThreadMessages}
             userProfile={userProfile}
             width={workspaceWidth}
+            documentRevision={documentRevision}
           />
         )}
       </Workspace>

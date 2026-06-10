@@ -28,18 +28,18 @@ export default defineConfig({
     port: frontendPort,
     proxy: {
       '/api': {
-        target: `http://localhost:${backendPort}`,
+        target: `http://127.0.0.1:${backendPort}`,
         changeOrigin: true,
       },
       '/v1': {
-        target: `http://localhost:${backendPort}`,
+        target: `http://127.0.0.1:${backendPort}`,
         changeOrigin: true,
       }
     }
   },
   define: {
     'import.meta.env.VITE_ENABLE_SSO': JSON.stringify(String(enableSso)),
-    'import.meta.env.VITE_SSO_LOGIN_URL': JSON.stringify(`http://localhost:${authbluePort}/login`),
-    'import.meta.env.VITE_SSO_LOGOUT_URL': JSON.stringify(`http://localhost:${authbluePort}/logout`),
+    'import.meta.env.VITE_SSO_LOGIN_URL': JSON.stringify(`http://127.0.0.1:${authbluePort}/login`),
+    'import.meta.env.VITE_SSO_LOGOUT_URL': JSON.stringify(`http://127.0.0.1:${authbluePort}/logout`),
   }
 })

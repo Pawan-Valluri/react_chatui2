@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useState } from "react";
 import { Sparkles, ChevronLeft, ChevronRight } from "lucide-react";
+import { Orbit } from "./loaders";
 
 interface WorkspaceProps {
   isCollapsed: boolean;
@@ -7,6 +8,7 @@ interface WorkspaceProps {
   width: number;
   onWidthChange: (width: number) => void;
   children?: React.ReactNode;
+  savingStatus?: "idle" | "saving" | "saved";
 }
 
 export const Workspace: React.FC<WorkspaceProps> = ({
@@ -15,6 +17,7 @@ export const Workspace: React.FC<WorkspaceProps> = ({
   width,
   onWidthChange,
   children,
+  savingStatus = "idle",
 }) => {
   const [isResizing, setIsResizing] = useState(false);
   const resizeRef = useRef<HTMLDivElement>(null);
@@ -91,7 +94,27 @@ export const Workspace: React.FC<WorkspaceProps> = ({
               Workspace
               <span className="workspace-header-subtitle">Panel</span>
             </div>
-            {/* Header Close button removed per user request, replaced by mid-edge toggle */}
+            
+            <div className="autosync-status-container">
+              {savingStatus === "saving" && (
+                <div className="autosync-status saving">
+                  <Orbit size={18} color="var(--accent-light)" speed={1.5} />
+                  <span className="tooltip-text">Autosaving edits...</span>
+                </div>
+              )}
+              {savingStatus === "saved" && (
+                <div className="autosync-status saved">
+                  <div className="sync-dot green" />
+                  <span className="tooltip-text">Saved to backend</span>
+                </div>
+              )}
+              {savingStatus === "idle" && (
+                <div className="autosync-status idle">
+                  <div className="sync-dot grey" />
+                  <span className="tooltip-text">Connected & In Sync</span>
+                </div>
+              )}
+            </div>
           </div>
         )}
 

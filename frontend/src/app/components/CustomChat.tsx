@@ -88,6 +88,7 @@ interface CustomChatProps {
   onThreadUpdated?: () => void;
   onDocumentUpdated?: () => void;
   starterPrompts?: any[];
+  editorAgentTools?: any;
 }
 
 // --------------------------------------------------------------------------
@@ -608,10 +609,12 @@ export const CustomChat: React.FC<CustomChatProps> = ({
   onClearPendingPrompt,
   onThreadUpdated,
   onDocumentUpdated,
-  starterPrompts
+  starterPrompts,
+  editorAgentTools
 }) => {
   // Freeze initialMessages inside local state to block reactive resets from parent re-renders
   const [frozenMessages] = useState(() => initialMessages);
+  const executedToolCalls = React.useRef<Set<string>>(new Set());
 
   // Create and configure a local assistant runtime
   const runtime = useLocalRuntime({
@@ -648,6 +651,7 @@ export const CustomChat: React.FC<CustomChatProps> = ({
           parentId: parentMessageId,
           assistantMessageId: assistantMessageId,
           content: textContent,
+          context: editorAgentTools ? editorAgentTools.getContext() : null,
         }),
         signal: abortSignal,
       });
@@ -695,6 +699,38 @@ export const CustomChat: React.FC<CustomChatProps> = ({
 
               if (currentEvent === "parts") {
                 const parsedParts = JSON.parse(data);
+                
+                // Intercept and run tool calls client-side
+                for (const part of parsedParts) {
+                  if (part.type === "tool-call" && part.toolCallId) {
+                    if (!executedToolCalls.current.has(part.toolCallId)) {
+                      executedToolCalls.current.add(part.toolCallId);
+                      if (editorAgentTools) {
+                        const normalizedArgs = { ...part.args };
+                        if ('from_page' in normalizedArgs) {
+                          normalizedArgs['from'] = normalizedArgs['from_page'];
+                          delete normalizedArgs['from_page'];
+                        }
+                        if ('to_page' in normalizedArgs) {
+                          normalizedArgs['to'] = normalizedArgs['to_page'];
+                          delete normalizedArgs['to_page'];
+                        }
+                        if ('paraId' in normalizedArgs && typeof normalizedArgs['paraId'] === 'string') {
+                          normalizedArgs['paraId'] = normalizedArgs['paraId'].replace(/[\[\]]/g, '');
+                        }
+                        
+                        console.log("Executing client tool:", part.toolName, normalizedArgs);
+                        try {
+                          const res = editorAgentTools.executeToolCall(part.toolName, normalizedArgs);
+                          console.log("Client tool execution result:", res);
+                        } catch (err) {
+                          console.error("Client tool execution failed:", err);
+                        }
+                      }
+                    }
+                  }
+                }
+                
                 yield { id: assistantMessageId, content: parsedParts };
                 continue;
               }
@@ -742,9 +778,8 @@ export const CustomChat: React.FC<CustomChatProps> = ({
                     status: "complete"
                   };
                   // Reactive check: if edit_document completed, notify parent instantly
-                  if (toolCallInfo.toolName === "edit_document" && onDocumentUpdated) {
-                    console.log("edit_document tool call completed. Notifying document reload.");
-                    onDocumentUpdated();
+                  if (toolCallInfo.toolName === "edit_document") {
+                    console.log("edit_document tool call completed (no reload triggered).");
                   }
                 }
               }

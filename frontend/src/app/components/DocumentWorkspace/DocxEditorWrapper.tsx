@@ -1,6 +1,7 @@
 import React, { useEffect } from "react";
 import { DocxEditor } from "@eigenpal/docx-editor-react";
 import "@eigenpal/docx-editor-react/styles.css";
+import { useDocxStyles } from "../../hooks/useDocxStyles";
 
 interface DocxEditorWrapperProps {
   editorRef: React.RefObject<any>;
@@ -8,7 +9,7 @@ interface DocxEditorWrapperProps {
   onChange: () => void;
   userProfile?: any;
   width: number;
-  documentRevision: number;
+  threadId: string;
 }
 
 export const DocxEditorWrapper: React.FC<DocxEditorWrapperProps> = ({
@@ -16,14 +17,15 @@ export const DocxEditorWrapper: React.FC<DocxEditorWrapperProps> = ({
   documentBuffer,
   onChange,
   userProfile,
-  width,
-  documentRevision,
+  threadId,
 }) => {
   const userName = userProfile?.fullname || userProfile?.uid || "Beyond Developer";
 
-  // Base width at which the desktop editor toolbar and page fit comfortably.
-  const baseWidth = 860;
-  const calculatedZoom = Math.max(0.4, Math.min(1.0, (width - 20) / baseWidth));
+  // Disable calculatedZoom to avoid breaking fixed positioning of dropdown menus
+  // caused by CSS transform: scale()
+  const calculatedZoom = 1.0;
+
+  useDocxStyles(documentBuffer);
 
   useEffect(() => {
     if (editorRef.current && typeof editorRef.current.setZoom === "function") {
@@ -35,45 +37,8 @@ export const DocxEditorWrapper: React.FC<DocxEditorWrapperProps> = ({
     }
   }, [calculatedZoom, documentBuffer, editorRef]);
 
-  // Use a ResizeObserver to robustly center the internal scroll container whenever its size changes.
-  // This handles sidebar CSS transitions perfectly.
-  useEffect(() => {
-    const wrapperNode = document.querySelector('.docx-editor-scaler');
-    if (!wrapperNode) return;
-
-    const centerScroll = () => {
-      // Find the specific container that Eigenpal uses for scrolling the page area.
-      // We know it has overflow: auto and overflow-anchor: none from inline styles.
-      const editorRoot = document.querySelector('.ep-root');
-      if (!editorRoot) return;
-      
-      const scrollContainers = editorRoot.querySelectorAll('div');
-      
-      for (let i = 0; i < scrollContainers.length; i++) {
-        const el = scrollContainers[i];
-        // Target the element that actually has horizontal overflow
-        if (el.scrollWidth > el.clientWidth && el.clientWidth > 0) {
-          // Check if this is the main editor canvas container (it usually has overflow: auto)
-          const style = window.getComputedStyle(el);
-          if (style.overflow === 'auto' || style.overflowX === 'auto' || el.style.overflowAnchor === 'none') {
-            el.scrollLeft = (el.scrollWidth - el.clientWidth) / 2;
-          }
-        }
-      }
-    };
-
-    // Run once initially
-    setTimeout(centerScroll, 100);
-    setTimeout(centerScroll, 500); // safety net after load
-
-    const observer = new ResizeObserver(() => {
-      centerScroll();
-    });
-
-    observer.observe(wrapperNode);
-
-    return () => observer.disconnect();
-  }, [width]);
+  // Removed centerScroll and ResizeObserver as it causes severe layout thrashing
+  // and breaks floating dropdown menus when they trigger a resize event.
 
   return (
     <div style={{
@@ -93,7 +58,7 @@ export const DocxEditorWrapper: React.FC<DocxEditorWrapperProps> = ({
         } as React.CSSProperties}
       >
         <DocxEditor
-          key={documentRevision}
+          key={threadId}
           ref={editorRef}
           documentBuffer={documentBuffer}
           mode="editing"
@@ -105,4 +70,3 @@ export const DocxEditorWrapper: React.FC<DocxEditorWrapperProps> = ({
   );
 };
 export default DocxEditorWrapper;
-

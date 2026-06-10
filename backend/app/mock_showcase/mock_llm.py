@@ -31,6 +31,45 @@ def load_combined_config():
         print("Failed to load root config.json in mock_llm:", e)
     return config
 
+def get_para_ids() -> List[str]:
+    para_ids = []
+    try:
+        from app.agent import current_document_context_var
+        ctx = current_document_context_var.get()
+        if ctx and "content" in ctx:
+            for block in ctx["content"]:
+                if block.get("type") == "paragraph":
+                    p_id = block.get("paraId")
+                    if p_id:
+                        para_ids.append(p_id)
+    except Exception as e:
+        print("Context read failed in mock_llm:", e)
+        
+    if para_ids:
+        return para_ids
+
+    # Fallback to reading file on disk
+    try:
+        from app.services.document_service import get_document_path, current_thread_id_var
+        import docx
+        thread_id = current_thread_id_var.get()
+        path = get_document_path(thread_id)
+        if os.path.exists(path):
+            doc = docx.Document(path)
+            for p in doc.paragraphs:
+                w14_ns = "http://schemas.microsoft.com/office/word/2010/wordml"
+                para_id = p._element.get(f"{{{w14_ns}}}paraId")
+                if not para_id:
+                    para_id = p._element.get("paraId")
+                if para_id:
+                    para_ids.append(para_id)
+    except Exception as e:
+        print("Fallback file read failed in mock_llm:", e)
+        
+    if not para_ids:
+        para_ids = ["p_first", "p_second", "p_third"]
+    return para_ids
+
 class MockChatModel(BaseChatModel):
     """A polymorphic LLM simulator that acts exactly like a real LangChain model,
     implementing state-based predefined showcase pathways.
@@ -112,14 +151,22 @@ class MockChatModel(BaseChatModel):
                 elif isinstance(m, ToolMessage) and m.name != "think":
                     system_tool_responses += 1
 
+        import re
+        user_prompt_original = messages[0].content if latest_human_idx == -1 else messages[latest_human_idx].content
+        
+        table_match = re.search(r'add table:(.*)', user_prompt_original, re.IGNORECASE)
+        para_match = re.search(r'add paragraph:(.*)', user_prompt_original, re.IGNORECASE)
+
         # 3. Route decision trees based on the static mock_routes schemas
         invoc_id = uuid.uuid4().hex[:8]
         if any(kw in user_prompt for kw in ["multi", "multiple", "advanced", "complex", "step"]):
             ai_message = self._handle_multistep_route(thought_count, system_tool_responses, invoc_id)
-        elif any(kw in user_prompt for kw in ["table", "grid", "rows", "cols", "columns"]):
-            ai_message = self._handle_add_table_route(thought_count, system_tool_responses, invoc_id)
-        elif any(kw in user_prompt for kw in ["document", "edit", "write", "summary", "paragraph", "append"]):
-            ai_message = self._handle_edit_document_route(thought_count, system_tool_responses, invoc_id)
+        elif table_match or any(kw in user_prompt for kw in ["table", "grid", "rows", "cols", "columns"]):
+            style_name = table_match.group(1).strip() if table_match else None
+            ai_message = self._handle_add_table_route(thought_count, system_tool_responses, invoc_id, style_name)
+        elif para_match or any(kw in user_prompt for kw in ["document", "edit", "write", "summary", "paragraph", "append"]):
+            style_name = para_match.group(1).strip() if para_match else None
+            ai_message = self._handle_edit_document_route(thought_count, system_tool_responses, invoc_id, style_name)
         elif any(kw in user_prompt for kw in ["search", "kb", "knowledge", "help", "guide", "info", "apcot"]):
             ai_message = self._handle_search_route(thought_count, system_tool_responses, messages[0].content, invoc_id)
         elif any(kw in user_prompt for kw in ["hello", "hi"]):
@@ -208,11 +255,14 @@ class MockChatModel(BaseChatModel):
             )
             return AIMessage(content=final_text)
 
-    def _handle_edit_document_route(self, thought_count: int, system_tool_responses: int, invoc_id: str) -> AIMessage:
+    def _handle_edit_document_route(self, thought_count: int, system_tool_responses: int, invoc_id: str, style_name: str = None) -> AIMessage:
         route = CONVERSATION_ROUTES["edit_document"]
+        para_ids = get_para_ids()
+        p0 = para_ids[0] if len(para_ids) > 0 else "placeholder_id"
+        p1 = para_ids[1] if len(para_ids) > 1 else p0
         
-        # Phase 1: 3 Consecutive Thought Steps
-        if thought_count < 3:
+        # Phase 1: 2 thoughts
+        if thought_count < 2:
             thought_text = route["thoughts"][thought_count]
             return AIMessage(
                 content="",
@@ -223,23 +273,21 @@ class MockChatModel(BaseChatModel):
                     "type": "tool_call"
                 }]
             )
-            
-        # Tool Call: edit_document
-        elif thought_count == 3 and system_tool_responses == 0:
-            tc = route["tool_call"]
+        # Tool Call 1: read_document
+        elif thought_count == 2 and system_tool_responses == 0:
+            tc = route["tool_call_1"]
             return AIMessage(
                 content="",
                 tool_calls=[{
                     "name": tc["name"],
                     "args": tc["args"],
-                    "id": f"tc_edit_doc_{invoc_id}",
+                    "id": f"tc_read_doc_1_{invoc_id}",
                     "type": "tool_call"
                 }]
             )
-            
-        # Phase 2: 2 Consecutive Thought Steps after edit_document tool execution
+        # Phase 2: 3 thoughts
         elif system_tool_responses == 1 and thought_count < 5:
-            idx = thought_count - 3
+            idx = thought_count - 2
             thought_text = route["thoughts_phase_2"][idx]
             return AIMessage(
                 content="",
@@ -250,16 +298,126 @@ class MockChatModel(BaseChatModel):
                     "type": "tool_call"
                 }]
             )
-            
+        # Tool Call 2: suggest_change
+        elif system_tool_responses == 1 and thought_count == 5:
+            tc = route["tool_call_2"]
+            args = dict(tc["args"])
+            args["paraId"] = p0
+            return AIMessage(
+                content="",
+                tool_calls=[{
+                    "name": tc["name"],
+                    "args": args,
+                    "id": f"tc_suggest_change_2_{invoc_id}",
+                    "type": "tool_call"
+                }]
+            )
+        # Phase 3: 2 thoughts
+        elif system_tool_responses == 2 and thought_count < 7:
+            idx = thought_count - 5
+            thought_text = route["thoughts_phase_3"][idx]
+            return AIMessage(
+                content="",
+                tool_calls=[{
+                    "name": "think",
+                    "args": {"thought": thought_text},
+                    "id": f"tc_think_doc_p3_{idx}_{invoc_id}",
+                    "type": "tool_call"
+                }]
+            )
+        # Tool Call 3: add_comment
+        elif system_tool_responses == 2 and thought_count == 7:
+            tc = route["tool_call_3"]
+            args = dict(tc["args"])
+            args["paraId"] = p0
+            return AIMessage(
+                content="",
+                tool_calls=[{
+                    "name": tc["name"],
+                    "args": args,
+                    "id": f"tc_add_comment_3_{invoc_id}",
+                    "type": "tool_call"
+                }]
+            )
+        # Phase 4: 2 thoughts
+        elif system_tool_responses == 3 and thought_count < 9:
+            idx = thought_count - 7
+            thought_text = route["thoughts_phase_4"][idx]
+            return AIMessage(
+                content="",
+                tool_calls=[{
+                    "name": "think",
+                    "args": {"thought": thought_text},
+                    "id": f"tc_think_doc_p4_{idx}_{invoc_id}",
+                    "type": "tool_call"
+                }]
+            )
+        # Tool Call 4: toggle_bullet_list
+        elif system_tool_responses == 3 and thought_count == 9:
+            tc = route["tool_call_4"]
+            args = dict(tc["args"])
+            args["paraId"] = p1
+            return AIMessage(
+                content="",
+                tool_calls=[{
+                    "name": tc["name"],
+                    "args": args,
+                    "id": f"tc_toggle_bullet_4_{invoc_id}",
+                    "type": "tool_call"
+                }]
+            )
+        # Phase 5: 2 thoughts
+        elif system_tool_responses == 4 and thought_count < 11:
+            idx = thought_count - 9
+            thought_text = route["thoughts_phase_5"][idx]
+            return AIMessage(
+                content="",
+                tool_calls=[{
+                    "name": "think",
+                    "args": {"thought": thought_text},
+                    "id": f"tc_think_doc_p5_{idx}_{invoc_id}",
+                    "type": "tool_call"
+                }]
+            )
+        # Tool Call 5: append_paragraph
+        elif system_tool_responses == 4 and thought_count == 11:
+            tc = route["tool_call_5"]
+            args = dict(tc["args"])
+            if style_name:
+                args["styleId"] = style_name
+            return AIMessage(
+                content="",
+                tool_calls=[{
+                    "name": tc["name"],
+                    "args": args,
+                    "id": f"tc_append_para_5_{invoc_id}",
+                    "type": "tool_call"
+                }]
+            )
+        # Phase 6: 2 thoughts
+        elif system_tool_responses == 5 and thought_count < 13:
+            idx = thought_count - 11
+            thought_text = route["thoughts_phase_6"][idx]
+            return AIMessage(
+                content="",
+                tool_calls=[{
+                    "name": "think",
+                    "args": {"thought": thought_text},
+                    "id": f"tc_think_doc_p6_{idx}_{invoc_id}",
+                    "type": "tool_call"
+                }]
+            )
         # Final response
         else:
             return AIMessage(content=route["response"])
 
-    def _handle_add_table_route(self, thought_count: int, system_tool_responses: int, invoc_id: str) -> AIMessage:
+    def _handle_add_table_route(self, thought_count: int, system_tool_responses: int, invoc_id: str, style_name: str = None) -> AIMessage:
         route = CONVERSATION_ROUTES["add_table"]
-        
-        # Phase 1: 3 Consecutive Thought Steps
-        if thought_count < 3:
+        para_ids = get_para_ids()
+        p0 = para_ids[-1] if len(para_ids) > 0 else "placeholder_id"
+
+        # Phase 1: 2 thoughts
+        if thought_count < 2:
             thought_text = route["thoughts"][thought_count]
             return AIMessage(
                 content="",
@@ -270,23 +428,21 @@ class MockChatModel(BaseChatModel):
                     "type": "tool_call"
                 }]
             )
-            
-        # Tool Call: edit_document (table action)
-        elif thought_count == 3 and system_tool_responses == 0:
-            tc = route["tool_call"]
+        # Tool Call 1: read_document
+        elif thought_count == 2 and system_tool_responses == 0:
+            tc = route["tool_call_1"]
             return AIMessage(
                 content="",
                 tool_calls=[{
                     "name": tc["name"],
                     "args": tc["args"],
-                    "id": f"tc_edit_tbl_{invoc_id}",
+                    "id": f"tc_read_doc_tbl_{invoc_id}",
                     "type": "tool_call"
                 }]
             )
-            
-        # Phase 2: 2 Consecutive Thought Steps after tool call
+        # Phase 2: 3 thoughts
         elif system_tool_responses == 1 and thought_count < 5:
-            idx = thought_count - 3
+            idx = thought_count - 2
             thought_text = route["thoughts_phase_2"][idx]
             return AIMessage(
                 content="",
@@ -297,7 +453,62 @@ class MockChatModel(BaseChatModel):
                     "type": "tool_call"
                 }]
             )
-            
+        # Tool Call 2: insert_table
+        elif system_tool_responses == 1 and thought_count == 5:
+            tc = route["tool_call_2"]
+            args = dict(tc["args"])
+            args["paraId"] = p0
+            if style_name:
+                args["styleId"] = style_name
+            return AIMessage(
+                content="",
+                tool_calls=[{
+                    "name": tc["name"],
+                    "args": args,
+                    "id": f"tc_insert_table_{invoc_id}",
+                    "type": "tool_call"
+                }]
+            )
+        # Phase 3: 2 thoughts
+        elif system_tool_responses == 2 and thought_count < 7:
+            idx = thought_count - 5
+            thought_text = route["thoughts_phase_3"][idx]
+            return AIMessage(
+                content="",
+                tool_calls=[{
+                    "name": "think",
+                    "args": {"thought": thought_text},
+                    "id": f"tc_think_tbl_p3_{idx}_{invoc_id}",
+                    "type": "tool_call"
+                }]
+            )
+        # Tool Call 3: add_table_row
+        elif system_tool_responses == 2 and thought_count == 7:
+            tc = route["tool_call_3"]
+            args = dict(tc["args"])
+            args["paraId"] = p0
+            return AIMessage(
+                content="",
+                tool_calls=[{
+                    "name": tc["name"],
+                    "args": args,
+                    "id": f"tc_add_table_row_{invoc_id}",
+                    "type": "tool_call"
+                }]
+            )
+        # Phase 4: 2 thoughts
+        elif system_tool_responses == 3 and thought_count < 9:
+            idx = thought_count - 7
+            thought_text = route["thoughts_phase_4"][idx]
+            return AIMessage(
+                content="",
+                tool_calls=[{
+                    "name": "think",
+                    "args": {"thought": thought_text},
+                    "id": f"tc_think_tbl_p4_{idx}_{invoc_id}",
+                    "type": "tool_call"
+                }]
+            )
         # Final response
         else:
             return AIMessage(content=route["response"])

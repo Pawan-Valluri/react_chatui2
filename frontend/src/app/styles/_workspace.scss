@@ -14,7 +14,17 @@
   position: relative;
   border-left: 1px solid var(--border-color);
   transition: width $duration-normal $transition-curve, background-color $duration-normal $transition-curve, border-color $duration-normal $transition-curve;
-  @include glass-panel(var(--glass-bg), var(--border-color), var(--glass-shadow), $glass-blur);
+  
+  /* Use pseudo-element for glass effect to prevent backdrop-filter from creating a containing block for fixed dropdowns */
+  background: transparent;
+  &::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    @include glass-panel(var(--glass-bg), var(--border-color), var(--glass-shadow), $glass-blur);
+    pointer-events: none;
+  }
 
   &.resizing {
     transition: none !important;
@@ -180,5 +190,73 @@
   &:hover {
     background-color: #005bb5;
     box-shadow: -4px 0 16px rgba(0, 111, 207, 0.4);
+  }
+}
+
+// --------------------------------------------------------------------------
+// AUTOSYNC STATUS & TOOLTIP
+// --------------------------------------------------------------------------
+.autosync-status-container {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  cursor: pointer;
+}
+
+.autosync-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+}
+
+.sync-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  transition: background-color $duration-normal;
+
+  &.green {
+    background-color: #2ec4b6; /* Gentle teal/green */
+    box-shadow: 0 0 6px rgba(46, 196, 182, 0.4);
+  }
+
+  &.grey {
+    background-color: var(--text-muted);
+  }
+}
+
+.tooltip-text {
+  visibility: hidden;
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 8px;
+  background-color: var(--bg-card);
+  color: var(--text-secondary);
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+  font-size: 0.75rem;
+  line-height: 1.4;
+  white-space: nowrap;
+  box-shadow: var(--glass-shadow);
+  z-index: 100;
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity 0.2s, transform 0.2s, visibility 0.2s;
+  pointer-events: none;
+  font-family: "BentonSans", sans-serif;
+  font-weight: 500;
+}
+
+.autosync-status-container:hover {
+  .tooltip-text {
+    visibility: visible;
+    opacity: 1;
+    transform: translateY(0);
   }
 }

@@ -85,47 +85,135 @@ CONVERSATION_ROUTES = {
     "edit_document": {
         "thoughts": [
             "Analyzing user request to modify workspace document...",
-            "Initializing backend python-docx write operation...",
-            "Enforcing OOXML Tracked Changes setting for APCOT Assistant..."
+            "Querying the active document state to identify paragraphs and paraId handles..."
         ],
-        "tool_call": {
-            "name": "edit_document",
-            "args": {"action": "append", "text": "APCOT Assistant has automatically appended this paragraph containing session metadata and guidelines validation details."},
-            "result": "Successfully updated document: append action completed."
+        "tool_call_1": {
+            "name": "read_document",
+            "args": {}
         },
         "thoughts_phase_2": [
-            "Document edit tool completed successfully.",
-            "Formulating confirmation response for user..."
+            "Active document state retrieved successfully.",
+            "Analyzing paragraph anchors to locate targets...",
+            "Formulating proposed tracked change suggestion for the second paragraph..."
+        ],
+        "tool_call_2": {
+            "name": "suggest_change",
+            "args": {
+                "paraId": "placeholder_id",
+                "search": "Welcome to your APCOT Chat Workspace Document.",
+                "replaceWith": "Welcome to your premium APCOT Chat Document Workspace."
+            }
+        },
+        "thoughts_phase_3": [
+            "Tracked change suggestion dispatched.",
+            "Attaching an explanatory review comment to the same paragraph..."
+        ],
+        "tool_call_3": {
+            "name": "add_comment",
+            "args": {
+                "paraId": "placeholder_id",
+                "text": "Suggesting a warmer, premium header styling.",
+                "search": "Welcome"
+            }
+        },
+        "thoughts_phase_4": [
+            "Comment successfully anchored.",
+            "Converting the next paragraph into a bullet list item to enhance scannability..."
+        ],
+        "tool_call_4": {
+            "name": "toggle_bullet_list",
+            "args": {
+                "paraId": "placeholder_id_2",
+                "enabled": True
+            }
+        },
+        "thoughts_phase_5": [
+            "Bullet list style applied in the editor.",
+            "Appending a final sign-off paragraph at the bottom of the document..."
+        ],
+        "tool_call_5": {
+            "name": "append_paragraph",
+            "args": {
+                "text": "This paragraph was dynamically appended by the mock LLM!",
+                "styleId": "Normal"
+            }
+        },
+        "thoughts_phase_6": [
+            "Paragraph successfully appended.",
+            "Formulating final response to summarize edits..."
         ],
         "response": (
-            "I have updated your document workspace by appending a new paragraph: "
-            "\"APCOT Assistant has automatically appended this paragraph containing session metadata and guidelines validation details.\". "
-            "This change was saved to the backend Single Source of Truth and marked as a tracked revision by **APCOT Assistant**. "
-            "The Workspace panel on the right has automatically reloaded to show the update!"
+            "I have performed a multi-step document review and edit sequence:\n\n"
+            "1. **`read_document`**: Inspected the document hierarchy.\n"
+            "2. **`suggest_change`**: Suggested a tracked revision changing 'Welcome...' to 'Welcome to your premium...'.\n"
+            "3. **`add_comment`**: Added a comment explaining the edit.\n"
+            "4. **`toggle_bullet_list`**: Converted the next paragraph into a bullet point list item.\n"
+            "5. **`append_paragraph`**: Appended a new paragraph at the bottom of the document.\n\n"
+            "All edits have been applied directly to your active browser editor and saved to the backend Single Source of Truth!"
         )
     },
+    
     "add_table": {
         "thoughts": [
-            "Parsing user prompt for document table layout...",
-            "Preparing JSON cell matrix structure...",
-            "Invoking edit_document tool with table action in document_service..."
+            "Analyzing user request to insert a structured data grid...",
+            "Reading document structure to locate target paraId..."
         ],
-        "tool_call": {
-            "name": "edit_document",
-            "args": {
-                "action": "table",
-                "text": '[["Feature", "Status", "Owner"], ["SSO Login", "Complete", "Charles"], ["Track Changes", "In Progress", "APCOT Assistant"], ["Tables", "Added", "APCOT Assistant"]]'
-            },
-            "result": "Successfully updated document: table action completed."
+        "tool_call_1": {
+            "name": "read_document",
+            "args": {}
         },
         "thoughts_phase_2": [
-            "Table created successfully in docx file.",
-            "Synthesizing success message for chat response..."
+            "Document paragraphs retrieved.",
+            "Compiling a deeply customized cells matrix containing bold headers, custom colors, shading, and bullet points...",
+            "Inserting the new table after the first paragraph..."
+        ],
+        "tool_call_2": {
+            "name": "insert_table",
+            "args": {
+                "paraId": "placeholder_id",
+                "rows": 3,
+                "cols": 3,
+                "styleId": "HeadingTable",
+                "cells": [
+                    [
+                        {"content": [{"type": "paragraph", "text": "Feature", "marks": {"bold": True}}]},
+                        {"content": [{"type": "paragraph", "text": "Status", "marks": {"bold": True}}]},
+                        {"content": [{"type": "paragraph", "text": "Details", "marks": {"bold": True}}]}
+                    ],
+                    [
+                        {"content": [{"type": "paragraph", "text": "SSO Login"}]},
+                        {"content": [{"type": "paragraph", "text": "Complete", "marks": {}}, {"type": "bullet_list", "items": ["AuthBlue SSO", "HttpOnly Signed JWT Token"]}]},
+                        {"content": [{"type": "paragraph", "text": "Fully integrated into login shell"}]}
+                    ],
+                    [
+                        {"content": [{"type": "paragraph", "text": "Table Formatting"}]},
+                        {"content": [{"type": "paragraph", "text": "Pristine", "marks": {}}]},
+                        {"content": [{"type": "bullet_list", "items": ["Deeply configurable cells", "Custom shading fills", "Multi-elements cell layout"]}]}
+                    ]
+                ]
+            }
+        },
+        "thoughts_phase_3": [
+            "Table successfully created in editor.",
+            "Let's add a row at the bottom of the table..."
+        ],
+        "tool_call_3": {
+            "name": "add_table_row",
+            "args": {
+                "paraId": "placeholder_id",
+                "position": "after"
+            }
+        },
+        "thoughts_phase_4": [
+            "New row inserted.",
+            "Formulating final response to summarize table addition..."
         ],
         "response": (
-            "I have updated your document workspace by generating and inserting a clean status grid table "
-            "(containing 4 rows and 3 columns) using the OOXML editor settings. "
-            "You should see it load inside the Workspace panel on your right!"
+            "I have updated your document workspace by generating and inserting a deeply configurable status table:\n\n"
+            "- **`insert_table`**: Created a 3x3 grid containing custom cell shading colors (light blue/yellow), "
+            "bold/italic text formatting, and nested bullet points inside table cells.\n"
+            "- **`add_table_row`**: Dynamically added an empty fourth row at the bottom of the table.\n\n"
+            "Check out the rendered result in the Workspace Panel on the right!"
         )
     },
     
@@ -136,8 +224,7 @@ CONVERSATION_ROUTES = {
         "response_template": (
             "Thank you for your message: \"{input_text}\". I have processed your input through my "
             "LangGraph state machine! You can see my thought traces (reasoning) and tool execution cards "
-            "above. If you ask me to 'search the knowledge base', I can execute a simulated database tool "
-            "for you. Or try asking me to 'edit document' or 'write a summary' to see how I modify your document canvas! Let me know how I can help!"
+            "above. Try asking me to 'edit document' to see bullet points and comments, or 'add table' to see deeply customizable cell shading, multi-element cells, and bullet points in table cells!"
         )
     }
 }

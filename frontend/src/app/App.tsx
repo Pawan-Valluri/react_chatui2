@@ -37,6 +37,8 @@ export function App({ config }: AppProps = {}) {
   const [isWorkspaceCollapsed, setIsWorkspaceCollapsed] = useState(true);
   const [workspaceWidth, setWorkspaceWidth] = useState(450);
   const [documentRevision, setDocumentRevision] = useState(0);
+  const [editorAgentTools, setEditorAgentTools] = useState<any>(null);
+  const [savingStatus, setSavingStatus] = useState<"idle" | "saving" | "saved">("idle");
 
   // Auto-expand Workspace when a thread is loaded/selected
   useEffect(() => {
@@ -290,6 +292,7 @@ export function App({ config }: AppProps = {}) {
         onThreadUpdated={fetchThreads}
         onDocumentUpdated={() => setDocumentRevision(prev => prev + 1)}
         starterPrompts={starterPrompts}
+        editorAgentTools={editorAgentTools}
       />
 
       {/* Workspace Panel */}
@@ -298,14 +301,16 @@ export function App({ config }: AppProps = {}) {
         onToggleCollapse={() => setIsWorkspaceCollapsed((prev) => !prev)}
         width={workspaceWidth}
         onWidthChange={setWorkspaceWidth}
+        savingStatus={savingStatus}
       >
         {currentThreadId && (
           <DocumentWorkspace
             threadId={currentThreadId}
-            messages={currentThreadMessages}
             userProfile={userProfile}
             width={workspaceWidth}
             documentRevision={documentRevision}
+            onRegisterAgentTools={setEditorAgentTools}
+            onSavingStatusChange={setSavingStatus}
           />
         )}
       </Workspace>

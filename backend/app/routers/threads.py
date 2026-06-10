@@ -106,8 +106,25 @@ async def send_message(thread_id: str, payload: MessageCreate, db: Session = Dep
         if USE_MOCK_LLM:
             try:
                 from app.mock_showcase.mock_tools import think as mock_think, search_kb as mock_search_kb, check_entitlements as mock_check_entitlements
-                from app.agent import edit_document
-                graph_tools = [mock_think, mock_search_kb, mock_check_entitlements, edit_document]
+                from app.agent import (
+                    read_document, read_selection, read_page, read_pages,
+                    find_text, read_comments, read_changes,
+                    add_comment, suggest_change, apply_formatting,
+                    set_paragraph_style, reply_comment, resolve_comment, scroll,
+                    insert_table, edit_table_cell, toggle_bullet_list,
+                    add_table_row, delete_table_row, add_table_column, delete_table_column,
+                    append_paragraph
+                )
+                graph_tools = [
+                    mock_think, mock_search_kb, mock_check_entitlements,
+                    read_document, read_selection, read_page, read_pages,
+                    find_text, read_comments, read_changes,
+                    add_comment, suggest_change, apply_formatting,
+                    set_paragraph_style, reply_comment, resolve_comment, scroll,
+                    insert_table, edit_table_cell, toggle_bullet_list,
+                    add_table_row, delete_table_row, add_table_column, delete_table_column,
+                    append_paragraph
+                ]
             except Exception as e:
                 print("Failed to load mock_tools:", e)
                 
@@ -210,7 +227,9 @@ async def send_message(thread_id: str, payload: MessageCreate, db: Session = Dep
         has_streamed_text = False
 
         from app.services.document_service import current_thread_id_var
+        from app.agent import current_document_context_var
         token = current_thread_id_var.set(thread_id)
+        context_token = current_document_context_var.set(payload.context)
         try:
             # stream_mode="updates" streams state modifications node by node
             async for update in agent_graph.astream(state, stream_mode="updates"):
@@ -322,6 +341,7 @@ async def send_message(thread_id: str, payload: MessageCreate, db: Session = Dep
             print("Error encountered in agent graph stream:", err)
         finally:
             current_thread_id_var.reset(token)
+            current_document_context_var.reset(context_token)
 
         # 5. Persist final assistant parts to database
         db_assistant = Message(

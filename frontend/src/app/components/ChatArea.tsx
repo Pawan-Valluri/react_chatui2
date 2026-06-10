@@ -22,6 +22,7 @@ interface ChatAreaProps {
   onThreadUpdated?: () => void;
   onDocumentUpdated?: () => void;
   starterPrompts?: any[];
+  editorAgentTools: any;
 }
 
 export const ChatArea: React.FC<ChatAreaProps> = ({
@@ -35,7 +36,8 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
   onToggleTheme,
   onThreadUpdated,
   onDocumentUpdated,
-  starterPrompts
+  starterPrompts,
+  editorAgentTools
 }) => {
   const activeThread = threads.find(t => t.id === currentThreadId);
 
@@ -89,6 +91,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
           onThreadUpdated={onThreadUpdated}
           onDocumentUpdated={onDocumentUpdated}
           starterPrompts={starterPrompts}
+          editorAgentTools={editorAgentTools}
         />
       )}
     </main>

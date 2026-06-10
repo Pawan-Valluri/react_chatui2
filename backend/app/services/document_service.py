@@ -27,16 +27,25 @@ def enable_track_changes(doc):
         track_revisions = OxmlElement('w:trackRevisions')
         settings.append(track_revisions)
 
+import shutil
+
+TEMPLATE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets", "report-template.docx")
+
 def ensure_document_exists(thread_id: str) -> str:
     """Gets the document path. Creates a clean Word template if it does not exist."""
     path = get_document_path(thread_id)
     if not os.path.exists(path):
-        doc = docx.Document()
-        doc.add_heading("APCOT Chat Document Workspace", level=0)
-        doc.add_paragraph("Welcome to your APCOT Chat Workspace Document. This document serves as the Single Source of Truth for this session.")
-        doc.add_paragraph("You can edit this document here. Edits from both you (the user) and the APCOT Assistant will be tracked natively.")
-        enable_track_changes(doc)
-        doc.save(path)
+        if os.path.exists(TEMPLATE_PATH):
+            shutil.copy(TEMPLATE_PATH, path)
+            # Removed python-docx track changes injection because doc.save() 
+            # drops template styles.xml data.
+        else:
+            doc = docx.Document()
+            doc.add_heading("APCOT Chat Document Workspace", level=0)
+            doc.add_paragraph("Welcome to your APCOT Chat Workspace Document. This document serves as the Single Source of Truth for this session.")
+            doc.add_paragraph("You can edit this document here. Edits from both you (the user) and the APCOT Assistant will be tracked natively.")
+            enable_track_changes(doc)
+            doc.save(path)
     return path
 
 def get_document_bytes(thread_id: str) -> bytes:
@@ -50,12 +59,15 @@ def save_document_bytes(thread_id: str, data: bytes):
     path = get_document_path(thread_id)
     with open(path, "wb") as f:
         f.write(data)
-    try:
-        doc = docx.Document(path)
-        enable_track_changes(doc)
-        doc.save(path)
-    except Exception as e:
-        print("Error enforcing revisions on saved bytes:", e)
+    # Removed python-docx save step because it aggressively drops advanced styles
+    # from the styles.xml that the browser-based editor successfully generated.
+    # The browser editor handles tracking changes natively.
+    # try:
+    #     doc = docx.Document(path)
+    #     enable_track_changes(doc)
+    #     doc.save(path)
+    # except Exception as e:
+    #     print("Error enforcing revisions on saved bytes:", e)
 
 def apply_agent_edit(thread_id: str, action: str, text: str, paragraph_index: Optional[int] = None) -> str:
     """Applies programmatically-driven changes from the AI, wrapping them in native <w:ins> tracked elements."""

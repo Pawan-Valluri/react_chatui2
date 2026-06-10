@@ -4,18 +4,14 @@ export type SavingStatus = "idle" | "saving" | "saved";
 
 interface UseDocumentSyncProps {
   threadId: string;
-  messages: any[];
   editorRef: React.RefObject<any>;
   syncIntervalMs?: number; // Configurable periodic sync interval
-  documentRevision: number;
 }
 
 export function useDocumentSync({
   threadId,
-  messages,
   editorRef,
   syncIntervalMs = 10000, // Default to 10 seconds, fully configurable
-  documentRevision,
 }: UseDocumentSyncProps) {
   const [documentBuffer, setDocumentBuffer] = useState<ArrayBuffer | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -24,7 +20,6 @@ export function useDocumentSync({
 
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const periodicTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const processedToolCallsRef = useRef<Set<string>>(new Set());
   const hasUnsavedEditsRef = useRef<boolean>(false);
 
   // Fetch document buffer from backend
@@ -58,7 +53,7 @@ export function useDocumentSync({
     setSavingStatus("saving");
     try {
       // Imperatively save and get updated ArrayBuffer from docx-editor
-      const buffer = await editorRef.current.save();
+      const buffer = await editorRef.current.save({ selective: true });
       if (!buffer) {
         throw new Error("Editor returned empty buffer");
       }
@@ -104,7 +99,7 @@ export function useDocumentSync({
     }, 2500);
   }, [uploadDocument]);
 
-  // Initial fetch on mount, thread change, or documentRevision change
+  // Initial fetch on mount or thread change
   useEffect(() => {
     fetchDocument(true);
 
@@ -114,7 +109,7 @@ export function useDocumentSync({
       if (periodicTimerRef.current) clearInterval(periodicTimerRef.current);
       hasUnsavedEditsRef.current = false;
     };
-  }, [threadId, fetchDocument, documentRevision]);
+  }, [threadId, fetchDocument]);
 
   // Configurable Periodic sync heartbeat (saves changes every N seconds if there are unsaved edits)
   useEffect(() => {
@@ -139,35 +134,7 @@ export function useDocumentSync({
     };
   }, [syncIntervalMs, uploadDocument]);
 
-  // Listen to messages for completed agent tool calls
-  useEffect(() => {
-    if (!messages || messages.length === 0) return;
-
-    // Scan messages for completed edit_document tool calls
-    let newCompletedEditFound = false;
-
-    messages.forEach((msg) => {
-      if (msg.role === "assistant" && Array.isArray(msg.content)) {
-        msg.content.forEach((part: any) => {
-          if (part.type === "tool-call" && part.toolName === "edit_document") {
-            const isComplete = part.status === "complete" || part.result;
-            const toolCallId = part.toolCallId;
-            
-            if (isComplete && toolCallId && !processedToolCallsRef.current.has(toolCallId)) {
-              processedToolCallsRef.current.add(toolCallId);
-              newCompletedEditFound = true;
-              console.log("Reactive reload: Agent finished edit_document tool call:", toolCallId);
-            }
-          }
-        });
-      }
-    });
-
-    if (newCompletedEditFound) {
-      // Reload document silently in background so that editor receives agent's updates
-      fetchDocument(false);
-    }
-  }, [messages, fetchDocument]);
+  // Removed tool-call watcher per user requirement to prevent doc reloads.
 
   // Trigger manual download of document
   const downloadDocument = useCallback(() => {

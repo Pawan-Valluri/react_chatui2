@@ -3,7 +3,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import frontend_port
-from app.routers import user, threads
+from app.routers import user, threads, debug
 
 app = FastAPI(title="APCOT Chat Backend")
 
@@ -22,3 +22,4 @@ app.add_middleware(
 # Mount logical sub-routers
 app.include_router(user.router)
 app.include_router(threads.router)
+app.include_router(debug.router)

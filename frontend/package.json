@@ -12,7 +12,10 @@
   "dependencies": {
     "@assistant-ui/react": "^0.14.11",
     "@eigenpal/docx-editor-react": "^1.3.2",
+    "jszip": "^3.10.1",
     "lucide-react": "^1.16.0",
+    "prosemirror-state": "^1.4.4",
+    "prosemirror-view": "^1.41.9",
     "react": "^19.2.6",
     "react-dom": "^19.2.6"
   },

@@ -6,7 +6,6 @@ import "./DocumentWorkspace.scss";
 
 interface DocumentWorkspaceProps {
   threadId: string;
-  messages: any[];
   userProfile?: any;
   width: number;
   documentRevision: number;
@@ -14,7 +13,6 @@ interface DocumentWorkspaceProps {
 
 export const DocumentWorkspace: React.FC<DocumentWorkspaceProps> = ({
   threadId,
-  messages,
   userProfile,
   width,
   documentRevision,
@@ -23,13 +21,13 @@ export const DocumentWorkspace: React.FC<DocumentWorkspaceProps> = ({
   
   const {
     documentBuffer,
+    yDoc,
     loading,
     savingStatus,
     error,
     handleLocalChange,
   } = useDocumentSync({
     threadId,
-    messages,
     editorRef,
     documentRevision,
   });
@@ -60,10 +58,11 @@ export const DocumentWorkspace: React.FC<DocumentWorkspaceProps> = ({
           <div className="document-loading-overlay" style={{ color: "#ff4d4d" }}>
             <span>Error: {error}</span>
           </div>
-        ) : documentBuffer ? (
+        ) : documentBuffer && yDoc ? (
           <DocxEditorWrapper
             editorRef={editorRef}
             documentBuffer={documentBuffer}
+            yDoc={yDoc}
             onChange={handleLocalChange}
             userProfile={userProfile}
             width={width}

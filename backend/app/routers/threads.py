@@ -26,6 +26,9 @@ from app.config import (
     REGULAR_TEXT_STREAM_DELAY
 )
 
+from langgraph.types import Command
+from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+from pydantic import BaseModel
 import database
 
 router = APIRouter(prefix="/api")
@@ -67,7 +70,7 @@ async def send_message(thread_id: str, payload: MessageCreate, db: Session = Dep
     if not thread:
         raise HTTPException(status_code=404, detail="Thread not found")
     
-    # 2. Save User Message to database
+    # 2. Create User Message in memory (Do NOT save to DB yet)
     user_msg_content = [{"type": "text", "text": payload.content}]
     user_message = Message(
         id=payload.id if payload.id else str(uuid.uuid4()),
@@ -76,18 +79,6 @@ async def send_message(thread_id: str, payload: MessageCreate, db: Session = Dep
         role="user",
         content=json.dumps(user_msg_content)
     )
-    db.add(user_message)
-    db.commit()
-    
-    # 3. Update Thread Title if it is still default "New Chat"
-    if thread.title == "New Chat":
-        # Create a clean title based on first 6 words
-        words = payload.content.split()
-        title_str = " ".join(words[:6])
-        if len(words) > 6:
-            title_str += "..."
-        thread.title = title_str
-        db.commit()
 
     # 4. SSE Stream Generator
     async def sse_generator():
@@ -106,13 +97,12 @@ async def send_message(thread_id: str, payload: MessageCreate, db: Session = Dep
         if USE_MOCK_LLM:
             try:
                 from app.mock_showcase.mock_tools import think as mock_think, search_kb as mock_search_kb, check_entitlements as mock_check_entitlements
-                from app.agent import edit_document
-                graph_tools = [mock_think, mock_search_kb, mock_check_entitlements, edit_document]
+                from app.agent import insert_paragraph, insert_table, insert_list, apply_style
+                graph_tools = [mock_think, mock_search_kb, mock_check_entitlements, insert_paragraph, insert_table, insert_list, apply_style]
             except Exception as e:
                 print("Failed to load mock_tools:", e)
                 
-        agent_graph = create_agent_graph(llm, tools=graph_tools)
-
+        
         # 1. Fetch thread history from DB to build dynamic context state for branching.
         # Since the user could edit a previous message to create a branch, we reconstruct the exact linear path
         # of the active branch by traversing parent_id pointers backward starting from user_message.parent_id.
@@ -209,80 +199,87 @@ async def send_message(thread_id: str, payload: MessageCreate, db: Session = Dep
         reasoning_steps = []
         has_streamed_text = False
 
-        from app.services.document_service import current_thread_id_var
-        token = current_thread_id_var.set(thread_id)
         try:
-            # stream_mode="updates" streams state modifications node by node
-            async for update in agent_graph.astream(state, stream_mode="updates"):
-                for node_name, node_data in update.items():
-                    if "messages" in node_data:
-                        # Append any new messages produced by the node
-                        for m in node_data["messages"]:
-                            if m not in messages:
-                                messages.append(m)
-                    if "reasoning_steps" in node_data:
-                        reasoning_steps = node_data["reasoning_steps"]
-
-                # Reconstruct rebuilt_parts dynamically from accumulated messages and reasoning_steps
-                rebuilt_parts = []
-                
-                # 1. Add reasoning steps
-                for step in reasoning_steps:
-                    rebuilt_parts.append({"type": "reasoning", "text": step})
-                    
-                # 2. Add system tool calls (filtering out the virtual 'think' tool calls)
-                # Slice from initial_msg_count to only scan new assistant tool calls generated in the current turn
-                for msg in messages[initial_msg_count:]:
-                    if isinstance(msg, AIMessage) and msg.tool_calls:
-                        for tc in msg.tool_calls:
-                            if tc["name"] != "think":
-                                tc_id = tc["id"]
-                                # Search for the corresponding ToolMessage result
-                                tool_res = None
-                                for tm in messages[initial_msg_count:]:
-                                    if isinstance(tm, ToolMessage) and tm.tool_call_id == tc_id:
-                                        tool_res = tm.content
-                                        break
-                                
-                                status = "complete" if tool_res is not None else "running"
-                                rebuilt_parts.append({
-                                    "type": "tool-call",
-                                    "toolCallId": tc_id,
-                                    "toolName": tc["name"],
-                                    "args": tc["args"],
-                                    "status": status,
-                                    "result": tool_res
-                                })
-
-                # Reconstruct final text response if present
-                final_text = ""
-                for msg in reversed(messages[initial_msg_count:]):
-                    if isinstance(msg, AIMessage) and msg.content and not msg.tool_calls:
-                        final_text = msg.content
+            async with AsyncSqliteSaver.from_conn_string("langgraph_checkpoints.db") as memory:
+                agent_graph = create_agent_graph(llm, tools=graph_tools, checkpointer=memory)
+                config = {"configurable": {"thread_id": thread_id}}
+                # stream_mode="updates" streams state modifications node by node
+                async for update in agent_graph.astream(state, config, stream_mode="updates"):
+                    if "__interrupt__" in update:
+                        interrupt_obj = update["__interrupt__"][0]
+                        interrupt_payload = interrupt_obj.value
+                        yield f"event: requires_action\ndata: {json.dumps(interrupt_payload)}\n\n"
                         break
+                        
+                    for node_name, node_data in update.items():
+                        if "messages" in node_data:
+                            # Append any new messages produced by the node
+                            for m in node_data["messages"]:
+                                if m not in messages:
+                                    messages.append(m)
+                        if "reasoning_steps" in node_data:
+                            reasoning_steps = node_data["reasoning_steps"]
 
-                # Stream final text with typewriter if enabled, or immediately
-                if final_text and not has_streamed_text:
-                    has_streamed_text = True
-                    if ENABLE_STREAMING:
-                        words = final_text.split(" ")
-                        current_text = ""
-                        for word in words:
-                            if current_text:
-                                current_text += " "
-                            current_text += word
-                            parts_to_yield = list(rebuilt_parts) + [{"type": "text", "text": current_text}]
-                            yield f"event: parts\ndata: {json.dumps(parts_to_yield)}\n\n"
-                            await asyncio.sleep(REGULAR_TEXT_STREAM_DELAY)
-                    else:
-                        parts_to_yield = list(rebuilt_parts) + [{"type": "text", "text": final_text}]
-                        yield f"event: parts\ndata: {json.dumps(parts_to_yield)}\n\n"
+                    # Reconstruct rebuilt_parts dynamically from accumulated messages and reasoning_steps
+                    rebuilt_parts = []
                 
-                # If we haven't hit final text response yet, yield the current progress parts!
-                elif not final_text:
-                    yield f"event: parts\ndata: {json.dumps(rebuilt_parts)}\n\n"
+                    # 1. Add reasoning steps
+                    for step in reasoning_steps:
+                        rebuilt_parts.append({"type": "reasoning", "text": step})
+                    
+                    # 2. Add system tool calls (filtering out the virtual 'think' tool calls)
+                    # Slice from initial_msg_count to only scan new assistant tool calls generated in the current turn
+                    for msg in messages[initial_msg_count:]:
+                        if isinstance(msg, AIMessage) and msg.tool_calls:
+                            for tc in msg.tool_calls:
+                                if tc["name"] != "think":
+                                    tc_id = tc["id"]
+                                    # Search for the corresponding ToolMessage result
+                                    tool_res = None
+                                    for tm in messages[initial_msg_count:]:
+                                        if isinstance(tm, ToolMessage) and tm.tool_call_id == tc_id:
+                                            tool_res = tm.content
+                                            break
+                                
+                                    status = "complete" if tool_res is not None else "running"
+                                    rebuilt_parts.append({
+                                        "type": "tool-call",
+                                        "toolCallId": tc_id,
+                                        "toolName": tc["name"],
+                                        "args": tc["args"],
+                                        "status": status,
+                                        "result": tool_res
+                                    })
 
-            # 4. Save final state to DB after stream finishes
+                    # Reconstruct final text response if present
+                    final_text = ""
+                    for msg in reversed(messages[initial_msg_count:]):
+                        if isinstance(msg, AIMessage) and msg.content and not msg.tool_calls:
+                            final_text = msg.content
+                            break
+
+                    # Stream final text with typewriter if enabled, or immediately
+                    if final_text and not has_streamed_text:
+                        has_streamed_text = True
+                        if ENABLE_STREAMING:
+                            words = final_text.split(" ")
+                            current_text = ""
+                            for word in words:
+                                if current_text:
+                                    current_text += " "
+                                current_text += word
+                                parts_to_yield = list(rebuilt_parts) + [{"type": "text", "text": current_text}]
+                                yield f"event: parts\ndata: {json.dumps(parts_to_yield)}\n\n"
+                                await asyncio.sleep(REGULAR_TEXT_STREAM_DELAY)
+                        else:
+                            parts_to_yield = list(rebuilt_parts) + [{"type": "text", "text": final_text}]
+                            yield f"event: parts\ndata: {json.dumps(parts_to_yield)}\n\n"
+                
+                    # If we haven't hit final text response yet, yield the current progress parts!
+                    elif not final_text:
+                        yield f"event: parts\ndata: {json.dumps(rebuilt_parts)}\n\n"
+
+                # 4. Save final state to DB after stream finishes
             final_rebuilt_parts = []
             for step in reasoning_steps:
                 final_rebuilt_parts.append({"type": "reasoning", "text": step})
@@ -321,24 +318,18 @@ async def send_message(thread_id: str, payload: MessageCreate, db: Session = Dep
         except Exception as err:
             print("Error encountered in agent graph stream:", err)
         finally:
-            current_thread_id_var.reset(token)
+            pass
 
-        # 5. Persist final assistant parts to database
-        db_assistant = Message(
-            id=payload.assistantMessageId if payload.assistantMessageId else str(uuid.uuid4()),
-            thread_id=thread_id,
-            parent_id=user_message.id,
-            role="assistant",
-            content=json.dumps(parts)
-        )
-        db_new = database.SessionLocal()
-        try:
-            db_new.add(db_assistant)
-            db_new.commit()
-        finally:
-            db_new.close()
+        # 5. Defer persistence to explicit /commit endpoint
+
 
     return StreamingResponse(sse_generator(), media_type="text/event-stream")
+
+import base64
+import y_py as Y
+from fastapi.responses import JSONResponse
+from database import Document, DocumentTemplate
+from app.config import DEFAULT_TEMPLATE_ID
 
 @router.get("/threads/{thread_id}/document")
 def get_document(thread_id: str, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
@@ -347,18 +338,32 @@ def get_document(thread_id: str, db: Session = Depends(get_db), current_user: di
     if not thread:
         raise HTTPException(status_code=404, detail="Thread not found")
     
-    from app.services.document_service import get_document_bytes
-    from fastapi.responses import Response
+    document = db.query(Document).filter(Document.thread_id == thread_id).first()
     
-    try:
-        data = get_document_bytes(thread_id)
-        return Response(
-            content=data,
-            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            headers={"Content-Disposition": f"attachment; filename=thread_{thread_id}.docx"}
+    if not document:
+        template = db.query(DocumentTemplate).filter(DocumentTemplate.id == DEFAULT_TEMPLATE_ID).first()
+        if not template:
+            template = db.query(DocumentTemplate).first()
+            if not template:
+                raise HTTPException(status_code=500, detail="No templates found in the database.")
+        
+        document = Document(
+            thread_id=thread_id,
+            template_id=template.id,
+            latest_snapshot=None
         )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to load document: {str(e)}")
+        db.add(document)
+        db.commit()
+        db.refresh(document)
+        
+    template = db.query(DocumentTemplate).filter(DocumentTemplate.id == document.template_id).first()
+    if not template:
+        raise HTTPException(status_code=500, detail="Document template not found.")
+        
+    return JSONResponse(content={
+        "docx_blob": base64.b64encode(template.docx_blob).decode('utf-8'),
+        "latest_snapshot": base64.b64encode(document.latest_snapshot).decode('utf-8') if document.latest_snapshot else None
+    })
 
 @router.put("/threads/{thread_id}/document")
 async def put_document(thread_id: str, request: Request, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
@@ -367,12 +372,252 @@ async def put_document(thread_id: str, request: Request, db: Session = Depends(g
     if not thread:
         raise HTTPException(status_code=404, detail="Thread not found")
     
-    from app.services.document_service import save_document_bytes
-    
+    document = db.query(Document).filter(Document.thread_id == thread_id).first()
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+        
     try:
-        data = await request.body()
-        save_document_bytes(thread_id, data)
+        delta = await request.body()
+        if not delta:
+            return {"status": "success", "message": "No delta provided"}
+            
+        if document.latest_snapshot:
+            # Apply delta to existing snapshot
+            ydoc = Y.YDoc()
+            Y.apply_update(ydoc, document.latest_snapshot)
+            Y.apply_update(ydoc, delta)
+            document.latest_snapshot = Y.encode_state_as_update(ydoc)
+        else:
+            # No snapshot yet, the delta becomes the snapshot
+            document.latest_snapshot = delta
+            
+        db.commit()
         return {"status": "success", "message": "Document updated successfully"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to save document: {str(e)}")
 
+class CommitPayload(BaseModel):
+    user_message_id: str
+    parent_id: Optional[str] = None
+    user_content: str
+    assistant_message_id: str
+    assistant_parts: list
+
+@router.post("/threads/{thread_id}/commit")
+async def commit_turn(thread_id: str, request: Request, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    metadata_header = request.headers.get("X-Commit-Metadata")
+    if not metadata_header:
+        raise HTTPException(status_code=400, detail="Missing X-Commit-Metadata header")
+    metadata = json.loads(metadata_header)
+    payload = CommitPayload(**metadata)
+
+    delta = await request.body()
+    
+    thread = db.query(Thread).filter(Thread.id == thread_id, Thread.user_id == current_user["user_id"]).first()
+    if not thread:
+        raise HTTPException(status_code=404, detail="Thread not found")
+        
+    document = db.query(Document).filter(Document.thread_id == thread_id).first()
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+        
+    if thread.title == "New Chat":
+        words = payload.user_content.split()
+        title_str = " ".join(words[:6])
+        if len(words) > 6:
+            title_str += "..."
+        thread.title = title_str
+
+    # 1. Save user message
+    user_msg_content = [{"type": "text", "text": payload.user_content}]
+    user_message = Message(
+        id=payload.user_message_id,
+        thread_id=thread_id,
+        parent_id=payload.parent_id,
+        role="user",
+        content=json.dumps(user_msg_content)
+    )
+    db.add(user_message)
+    
+    # 2. Save assistant message and delta_blob
+    assistant_message = Message(
+        id=payload.assistant_message_id,
+        thread_id=thread_id,
+        parent_id=payload.user_message_id,
+        role="assistant",
+        content=json.dumps(payload.assistant_parts),
+        delta_blob=delta if delta else None
+    )
+    db.add(assistant_message)
+    
+    # 3. Apply delta to document.latest_snapshot
+    if delta:
+        if document.latest_snapshot:
+            ydoc = Y.YDoc()
+            Y.apply_update(ydoc, document.latest_snapshot)
+            Y.apply_update(ydoc, delta)
+            document.latest_snapshot = Y.encode_state_as_update(ydoc)
+        else:
+            document.latest_snapshot = delta
+            
+    db.commit()
+    return {"status": "success"}
+
+
+class ResumePayload(BaseModel):
+    client_results: list
+    assistantMessageId: str
+    parentId: Optional[str] = None
+
+@router.post("/threads/{thread_id}/messages/resume")
+async def resume_message(thread_id: str, payload: ResumePayload, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    # Verify thread exists and belongs to user
+    thread = db.query(Thread).filter(Thread.id == thread_id, Thread.user_id == current_user["user_id"]).first()
+    if not thread:
+        raise HTTPException(status_code=404, detail="Thread not found")
+
+    async def resume_generator():
+        llm = get_polymorphic_llm()
+        
+        if hasattr(llm, "user_id"):
+            llm.user_id = current_user["user_id"]
+        if hasattr(llm, "fullname"):
+            llm.fullname = current_user["fullname"]
+
+        graph_tools = None
+        if USE_MOCK_LLM:
+            try:
+                from app.mock_showcase.mock_tools import think as mock_think, search_kb as mock_search_kb, check_entitlements as mock_check_entitlements
+                from app.agent import insert_paragraph, insert_table, insert_list, apply_style
+                graph_tools = [mock_think, mock_search_kb, mock_check_entitlements, insert_paragraph, insert_table, insert_list, apply_style]
+            except Exception as e:
+                pass
+
+        async with AsyncSqliteSaver.from_conn_string("langgraph_checkpoints.db") as memory:
+            agent_graph = create_agent_graph(llm, tools=graph_tools, checkpointer=memory)
+            config = {"configurable": {"thread_id": thread_id}}
+            
+            # Fetch the state to reconstruct current messages
+            state_snapshot = await agent_graph.aget_state(config)
+            if not state_snapshot.next:
+                yield f"event: error\ndata: No suspended execution found\n\n"
+                return
+                
+            messages = list(state_snapshot.values.get("messages", []))
+            
+            initial_msg_count = 0
+            for i in range(len(messages) - 1, -1, -1):
+                # Langchain messages type check
+                if getattr(messages[i], "type", "") == "human":
+                    initial_msg_count = i + 1
+                    break
+                    
+            reasoning_steps = list(state_snapshot.values.get("reasoning_steps", []))
+            has_streamed_text = False
+            parts = []
+
+            try:
+                async for update in agent_graph.astream(Command(resume=payload.client_results), config, stream_mode="updates"):
+                    if "__interrupt__" in update:
+                        interrupt_obj = update["__interrupt__"][0]
+                        out_payload = interrupt_obj.value
+                        yield f"event: requires_action\ndata: {json.dumps(out_payload)}\n\n"
+                        break
+                        
+                    for node_name, node_data in update.items():
+                        if "messages" in node_data:
+                            for m in node_data["messages"]:
+                                if m not in messages:
+                                    messages.append(m)
+                        if "reasoning_steps" in node_data:
+                            reasoning_steps = node_data["reasoning_steps"]
+                            
+                    rebuilt_parts = []
+                    for step in reasoning_steps:
+                        rebuilt_parts.append({"type": "reasoning", "text": step})
+                        
+                    for msg in messages[initial_msg_count:]:
+                        if getattr(msg, "type", "") == "ai" and msg.tool_calls:
+                            for tc in msg.tool_calls:
+                                if tc["name"] != "think":
+                                    tc_id = tc["id"]
+                                    tool_res = None
+                                    for tm in messages[initial_msg_count:]:
+                                        if getattr(tm, "type", "") == "tool" and tm.tool_call_id == tc_id:
+                                            tool_res = tm.content
+                                            break
+                                    status = "complete" if tool_res is not None else "running"
+                                    rebuilt_parts.append({
+                                        "type": "tool-call",
+                                        "toolCallId": tc_id,
+                                        "toolName": tc["name"],
+                                        "args": tc["args"],
+                                        "status": status,
+                                        "result": tool_res
+                                    })
+                                    
+                    final_text = ""
+                    for msg in reversed(messages[initial_msg_count:]):
+                        if getattr(msg, "type", "") == "ai" and msg.content and not msg.tool_calls:
+                            final_text = msg.content
+                            break
+                            
+                    if final_text and not has_streamed_text:
+                        has_streamed_text = True
+                        if ENABLE_STREAMING:
+                            words = final_text.split(" ")
+                            current_text = ""
+                            for word in words:
+                                if current_text:
+                                    current_text += " "
+                                current_text += word
+                                parts_to_yield = list(rebuilt_parts) + [{"type": "text", "text": current_text}]
+                                yield f"event: parts\ndata: {json.dumps(parts_to_yield)}\n\n"
+                                await asyncio.sleep(REGULAR_TEXT_STREAM_DELAY)
+                        else:
+                            parts_to_yield = list(rebuilt_parts) + [{"type": "text", "text": final_text}]
+                            yield f"event: parts\ndata: {json.dumps(parts_to_yield)}\n\n"
+                    elif not final_text:
+                        yield f"event: parts\ndata: {json.dumps(rebuilt_parts)}\n\n"
+
+                # Prepare parts for database
+                final_rebuilt_parts = []
+                for step in reasoning_steps:
+                    final_rebuilt_parts.append({"type": "reasoning", "text": step})
+                
+                for msg in messages[initial_msg_count:]:
+                    if getattr(msg, "type", "") == "ai" and msg.tool_calls:
+                        for tc in msg.tool_calls:
+                            if tc["name"] != "think":
+                                tc_id = tc["id"]
+                                tool_res = None
+                                for tm in messages[initial_msg_count:]:
+                                    if getattr(tm, "type", "") == "tool" and tm.tool_call_id == tc_id:
+                                        tool_res = tm.content
+                                        break
+                                status = "complete" if tool_res is not None else "running"
+                                final_rebuilt_parts.append({
+                                    "type": "tool-call",
+                                    "toolCallId": tc_id,
+                                    "toolName": tc["name"],
+                                    "args": tc["args"],
+                                    "status": status,
+                                    "result": tool_res
+                                })
+                final_text = ""
+                for msg in reversed(messages[initial_msg_count:]):
+                    if getattr(msg, "type", "") == "ai" and msg.content and not msg.tool_calls:
+                        final_text = msg.content
+                        break
+                if final_text:
+                    final_rebuilt_parts.append({"type": "text", "text": final_text})
+                parts = final_rebuilt_parts
+
+            except Exception as err:
+                print("Error in resume generator:", err)
+            finally:
+                pass
+                
+            # Defer upsert logic to explicit /commit endpoint
+
+    return StreamingResponse(resume_generator(), media_type="text/event-stream")

@@ -7,7 +7,9 @@ from langchain_core.messages import BaseMessage, AIMessage, HumanMessage, ToolMe
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
-from app.services.document_service import current_thread_id_var
+from langgraph.types import interrupt
+from langgraph.checkpoint.sqlite import SqliteSaver
+import sqlite3
 
 # Define clean enterprise Agent State structure
 class AgentState(TypedDict):
@@ -43,26 +45,36 @@ async def check_entitlements(resource: str) -> str:
         "Granted full administration, thread deletion, and query permissions."
     )
 
-@tool
-def edit_document(action: str, text: str, paragraph_index: Optional[int] = None) -> str:
-    """Modify the workspace document for the active conversation.
-    - action: 'append' (adds text as new paragraph), 'replace' (replaces paragraph at paragraph_index), 'insert' (inserts paragraph at paragraph_index), 'clear' (clears all paragraphs and adds text).
-    - text: the text content to apply.
-    - paragraph_index: (optional) target 0-indexed paragraph index (required for 'replace' and 'insert').
+# ──────────────────────────────────────────────────────────────────────────
+# 🖥️ Client Tool Node (Remote Execution)
+# ──────────────────────────────────────────────────────────────────────────
+
+def client_tool_node(state: AgentState):
     """
-    try:
-        thread_id = current_thread_id_var.get()
-    except LookupError:
-        return "Error: No active conversation context found."
+    Handles frontend-native tool calls using LangGraph's interrupt API.
+    Execution halts here, saving state to the checkpointer, and bubbles up to FastAPI.
+    """
+    tool_calls = state["messages"][-1].tool_calls
     
-    from app.services.document_service import apply_agent_edit
-    return apply_agent_edit(thread_id, action, text, paragraph_index)
+    # 1. Trigger the native pause.
+    client_responses = interrupt({
+        "status": "requires_action", 
+        "tool_calls": tool_calls
+    })
+    
+    # 2. Execution wakes up here after frontend POSTs the result
+    tool_messages = [
+        ToolMessage(tool_call_id=resp["tool_call_id"], content=resp["output"]) 
+        for resp in client_responses
+    ]
+    
+    return {"messages": tool_messages}
 
 # ──────────────────────────────────────────────────────────────────────────
 # 🔀 The Dynamic Conditional Router
 # ──────────────────────────────────────────────────────────────────────────
 
-def evaluate_agent_step(state: AgentState) -> Literal["agent", "tools", "__end__"]:
+def evaluate_agent_step(state: AgentState) -> Literal["agent", "tools", "client_tools", "__end__"]:
     # Loop safety guardrail to prevent infinite billing recursion
     if state.get("loop_counter", 0) >= 12:
         print("Loop Safety Guardrail triggered: forcing termination.")
@@ -79,18 +91,23 @@ def evaluate_agent_step(state: AgentState) -> Literal["agent", "tools", "__end__
     if is_thinking:
         return "agent"  # Loops back to agent_node for consecutive thought steps
 
+    # Check for frontend-native remote tools
+    remote_tools = {"insert_paragraph", "insert_table", "insert_list", "apply_style"}
+    if any(tc["name"] in remote_tools for tc in last_message.tool_calls):
+        return "client_tools"
+
     return "tools"      # Routes to native ToolNode for system execution
 
 # ──────────────────────────────────────────────────────────────────────────
 # 🏗️ State Machine Factory
 # ──────────────────────────────────────────────────────────────────────────
 
-def create_agent_graph(llm: BaseChatModel, tools: List[Any] = None):
+def create_agent_graph(llm: BaseChatModel, tools: List[Any] = None, checkpointer: Any = None):
     """Compiles the pristine production LangGraph using a polymorphic LLM dependency."""
     
     # 1. Default to core native production tools if none are passed
     if tools is None:
-        tools = [think, search_kb, check_entitlements, edit_document]
+        tools = [think, search_kb, check_entitlements]
         
     llm_with_tools = llm.bind_tools(tools)
 
@@ -131,10 +148,12 @@ def create_agent_graph(llm: BaseChatModel, tools: List[Any] = None):
     # Add nodes
     workflow.add_node("agent", agent_node)
     workflow.add_node("tools", ToolNode(tools))
+    workflow.add_node("client_tools", client_tool_node)
     
     # Add edges
     workflow.add_edge(START, "agent")
-    workflow.add_conditional_edges("agent", evaluate_agent_step, ["agent", "tools", END])
+    workflow.add_conditional_edges("agent", evaluate_agent_step, ["agent", "tools", "client_tools", END])
     workflow.add_edge("tools", "agent")
+    workflow.add_edge("client_tools", "agent")
     
-    return workflow.compile()
+    return workflow.compile(checkpointer=checkpointer)

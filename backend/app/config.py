@@ -50,3 +50,6 @@ ENABLE_STREAMING = bool(root_config.get("ENABLE_STREAMING", True))
 
 # Global Mock LLM toggle
 USE_MOCK_LLM = bool(mock_config.get("USE_MOCK_LLM", True))
+
+# Global Default Template ID for Docx Generation
+DEFAULT_TEMPLATE_ID = root_config.get("DEFAULT_TEMPLATE_ID", "default_template_id")

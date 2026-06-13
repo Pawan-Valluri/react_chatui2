@@ -2,6 +2,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import fs from 'fs'
 import path from 'path'
+import { nodePolyfills } from 'vite-plugin-node-polyfills'
 
 // Load combined config if present with graceful local fallbacks
 let backendPort = 8080;
@@ -23,7 +24,12 @@ try {
 }
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react(),
+    nodePolyfills({
+      include: ['stream', 'util'],
+    }),
+  ],
   server: {
     port: frontendPort,
     proxy: {

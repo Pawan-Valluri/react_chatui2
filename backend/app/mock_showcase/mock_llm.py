@@ -117,9 +117,9 @@ class MockChatModel(BaseChatModel):
         if any(kw in user_prompt for kw in ["multi", "multiple", "advanced", "complex", "step"]):
             ai_message = self._handle_multistep_route(thought_count, system_tool_responses, invoc_id)
         elif any(kw in user_prompt for kw in ["table", "grid", "rows", "cols", "columns"]):
-            ai_message = self._handle_add_table_route(thought_count, system_tool_responses, invoc_id)
-        elif any(kw in user_prompt for kw in ["document", "edit", "write", "summary", "paragraph", "append"]):
-            ai_message = self._handle_edit_document_route(thought_count, system_tool_responses, invoc_id)
+            ai_message = self._handle_add_table_route(thought_count, system_tool_responses, user_prompt, invoc_id)
+        elif any(kw in user_prompt for kw in ["document", "edit", "write", "summary", "paragraph", "append", "bullet", "list"]):
+            ai_message = self._handle_edit_document_route(thought_count, system_tool_responses, user_prompt, invoc_id)
         elif any(kw in user_prompt for kw in ["search", "kb", "knowledge", "help", "guide", "info", "apcot"]):
             ai_message = self._handle_search_route(thought_count, system_tool_responses, messages[0].content, invoc_id)
         elif any(kw in user_prompt for kw in ["hello", "hi"]):
@@ -208,12 +208,21 @@ class MockChatModel(BaseChatModel):
             )
             return AIMessage(content=final_text)
 
-    def _handle_edit_document_route(self, thought_count: int, system_tool_responses: int, invoc_id: str) -> AIMessage:
+    def _handle_edit_document_route(self, thought_count: int, system_tool_responses: int, user_prompt: str, invoc_id: str) -> AIMessage:
+        import re
         route = CONVERSATION_ROUTES["edit_document"]
+        
+        # Parse prompt to find style. format: add paragraph:Style Name
+        style_match = re.search(r'(?:paragraph|list):\s*([^;\n]+)', user_prompt, re.IGNORECASE)
+        style = style_match.group(1).strip() if style_match else "Normal"
+        clean_style = style.replace(" ", "")
+        
+        is_list = "list" in user_prompt.lower() or "bullet" in user_prompt.lower()
+        tool_name = "insert_list" if is_list else "insert_paragraph"
         
         # Phase 1: 3 Consecutive Thought Steps
         if thought_count < 3:
-            thought_text = route["thoughts"][thought_count]
+            thought_text = f"Parsing user request to insert {'list' if is_list else 'paragraph'} with style '{style}'..." if thought_count == 0 else route["thoughts"][thought_count]
             return AIMessage(
                 content="",
                 tool_calls=[{
@@ -224,20 +233,33 @@ class MockChatModel(BaseChatModel):
                 }]
             )
             
-        # Tool Call: edit_document
+        # Tool Call: insert_paragraph or insert_list
         elif thought_count == 3 and system_tool_responses == 0:
-            tc = route["tool_call"]
+            if is_list:
+                args = {
+                    "targetId": "editor_root",
+                    "position": "after",
+                    "items": ["First point (Mock)", "Second point (Mock)"],
+                    "listStyleId": style
+                }
+            else:
+                args = {
+                    "targetId": "editor_root", 
+                    "position": "after", 
+                    "text": "APCOT Assistant has automatically appended this paragraph for testing styles.",
+                    "styleId": style
+                }
             return AIMessage(
                 content="",
                 tool_calls=[{
-                    "name": tc["name"],
-                    "args": tc["args"],
+                    "name": tool_name,
+                    "args": args,
                     "id": f"tc_edit_doc_{invoc_id}",
                     "type": "tool_call"
                 }]
             )
             
-        # Phase 2: 2 Consecutive Thought Steps after edit_document tool execution
+        # Phase 2: 2 Consecutive Thought Steps after tool execution
         elif system_tool_responses == 1 and thought_count < 5:
             idx = thought_count - 3
             thought_text = route["thoughts_phase_2"][idx]
@@ -253,14 +275,28 @@ class MockChatModel(BaseChatModel):
             
         # Final response
         else:
-            return AIMessage(content=route["response"])
+            response = (
+                f"I have successfully executed the `{tool_name}` tool!\n\n"
+                f"**Debug Info:**\n"
+                f"- **Parsed Style Name**: `{style}`\n"
+                f"- **Sanitized ID dispatched to Frontend**: `{clean_style}`\n"
+                f"- **Action**: Appended {'a new list' if is_list else 'a new paragraph'} to the document.\n\n"
+                "The Workspace panel on the right should have reloaded to show the newly styled element!"
+            )
+            return AIMessage(content=response)
 
-    def _handle_add_table_route(self, thought_count: int, system_tool_responses: int, invoc_id: str) -> AIMessage:
+    def _handle_add_table_route(self, thought_count: int, system_tool_responses: int, user_prompt: str, invoc_id: str) -> AIMessage:
+        import re
         route = CONVERSATION_ROUTES["add_table"]
+        
+        # Parse prompt to find style. format: add table:Style Name
+        style_match = re.search(r'table:\s*([^;\n]+)', user_prompt, re.IGNORECASE)
+        style = style_match.group(1).strip() if style_match else "Table Grid"
+        clean_style = style.replace(" ", "")
         
         # Phase 1: 3 Consecutive Thought Steps
         if thought_count < 3:
-            thought_text = route["thoughts"][thought_count]
+            thought_text = f"Parsing user request to insert table with style '{style}'..." if thought_count == 0 else route["thoughts"][thought_count]
             return AIMessage(
                 content="",
                 tool_calls=[{
@@ -271,14 +307,19 @@ class MockChatModel(BaseChatModel):
                 }]
             )
             
-        # Tool Call: edit_document (table action)
+        # Tool Call: insert_table
         elif thought_count == 3 and system_tool_responses == 0:
-            tc = route["tool_call"]
             return AIMessage(
                 content="",
                 tool_calls=[{
-                    "name": tc["name"],
-                    "args": tc["args"],
+                    "name": "insert_table",
+                    "args": {
+                        "targetId": "editor_root",
+                        "position": "after",
+                        "rows": 3,
+                        "cols": 3,
+                        "styleId": style
+                    },
                     "id": f"tc_edit_tbl_{invoc_id}",
                     "type": "tool_call"
                 }]
@@ -300,7 +341,15 @@ class MockChatModel(BaseChatModel):
             
         # Final response
         else:
-            return AIMessage(content=route["response"])
+            response = (
+                f"I have successfully executed the `insert_table` tool!\n\n"
+                f"**Debug Info:**\n"
+                f"- **Parsed Style Name**: `{style}`\n"
+                f"- **Sanitized ID dispatched to Frontend**: `{clean_style}`\n"
+                f"- **Action**: Appended a 3x3 table to the document.\n\n"
+                "The Workspace panel on the right should have reloaded to show the newly styled element!"
+            )
+            return AIMessage(content=response)
 
     def _handle_search_route(self, thought_count: int, system_tool_responses: int, original_prompt: str, invoc_id: str) -> AIMessage:
         route = CONVERSATION_ROUTES["search"]

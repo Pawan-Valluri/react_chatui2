@@ -660,19 +660,29 @@ export const CustomChat: React.FC<CustomChatProps> = ({
         onThreadUpdated();
       }
 
-      const reader = response.body?.getReader();
+      let reader = response.body?.getReader();
       if (!reader) return;
 
       const decoder = new TextDecoder();
       let accumulatedText = "";
       let accumulatedReasoning = "";
       let toolCallInfo: any = null;
+      let latestAssistantParts: any[] = [];
 
       try {
         let buffer = "";
         while (true) {
           const { done, value } = await reader.read();
           if (done) {
+            window.dispatchEvent(new CustomEvent("StreamComplete", {
+                detail: {
+                    userMessageId: userMessageId,
+                    parentId: parentMessageId,
+                    userContent: textContent,
+                    assistantMessageId: assistantMessageId,
+                    assistantParts: latestAssistantParts
+                }
+            }));
             // Stream completed, notify parent to fetch document in case tool finished
             setTimeout(() => {
               if (onDocumentUpdated) onDocumentUpdated();
@@ -693,8 +703,61 @@ export const CustomChat: React.FC<CustomChatProps> = ({
             } else if (trimmed.startsWith("data: ")) {
               const data = trimmed.substring(6);
 
+              if (currentEvent === "requires_action") {
+                const tcPayload = JSON.parse(data);
+                const toolCalls = tcPayload.tool_calls;
+                
+                // Wait for frontend execution via global event
+                const client_results = await new Promise((resolve) => {
+                  const handleToolResult = (e: any) => {
+                     window.removeEventListener("FrontendToolResult", handleToolResult);
+                     resolve(e.detail.results);
+                  };
+                  window.addEventListener("FrontendToolResult", handleToolResult);
+                  
+                  // Tell DocumentWorkspace to execute
+                  window.dispatchEvent(new CustomEvent("ExecuteFrontendTool", {
+                    detail: { tool_calls: toolCalls }
+                  }));
+                  
+                  // Timeout fallback
+                  setTimeout(() => {
+                     window.removeEventListener("FrontendToolResult", handleToolResult);
+                     resolve(toolCalls.map((tc: any) => ({ id: tc.id, content: "Error: Frontend execution timeout" })));
+                  }, 5000);
+                });
+                
+                // Hot-swap the stream by hitting /resume!
+                try {
+                  const resumeResponse = await fetch(`/api/threads/${threadId}/messages/resume`, {
+                     method: "POST",
+                     headers: { "Content-Type": "application/json" },
+                     body: JSON.stringify({ 
+                         client_results, 
+                         assistantMessageId, 
+                         parentId: parentMessageId 
+                     }),
+                  });
+                  
+                  if (resumeResponse.ok && resumeResponse.body) {
+                     reader.releaseLock();
+                     reader = resumeResponse.body.getReader();
+                     currentEvent = "";
+                     break; // Break the 'for line of lines' loop to read from the new stream!
+                  } else {
+                     console.error("Resume failed", resumeResponse.statusText);
+                     window.dispatchEvent(new CustomEvent("RollbackFrontendEdits"));
+                  }
+                } catch (err) {
+                  console.error("Resume network error", err);
+                }
+                continue;
+              }
+              // data is already declared above
+
               if (currentEvent === "parts") {
                 const parsedParts = JSON.parse(data);
+                latestAssistantParts = parsedParts;
                 yield { id: assistantMessageId, content: parsedParts };
                 continue;
               }
@@ -713,9 +776,10 @@ export const CustomChat: React.FC<CustomChatProps> = ({
                     accumulatedText = typedText;
                     
                     const content: MessagePart[] = [];
-                    if (accumulatedReasoning) content.push({ type: "reasoning", text: accumulatedReasoning });
+                    if (accumulatedReasoning) content.push({ type: "text", text: `<details><summary>Reasoning</summary>\n\n${accumulatedReasoning}\n\n</details>\n\n` });
                     if (toolCallInfo) content.push(toolCallInfo);
                     content.push({ type: "text", text: accumulatedText });
+                    latestAssistantParts = content;
                     yield { id: assistantMessageId, content };
                     
                     await new Promise(resolve => setTimeout(resolve, 15));
@@ -754,8 +818,8 @@ export const CustomChat: React.FC<CustomChatProps> = ({
               
               if (accumulatedReasoning) {
                 content.push({
-                  type: "reasoning",
-                  text: accumulatedReasoning
+                  type: "text",
+                  text: `<details><summary>Reasoning</summary>\n\n${accumulatedReasoning}\n\n</details>\n\n`
                 });
               }
 
@@ -770,6 +834,7 @@ export const CustomChat: React.FC<CustomChatProps> = ({
                 });
               }
 
+              latestAssistantParts = content;
               yield { id: assistantMessageId, content };
             }
           }

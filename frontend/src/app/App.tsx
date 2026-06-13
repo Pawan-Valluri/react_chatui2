@@ -301,8 +301,7 @@ export function App({ config }: AppProps = {}) {
       >
         {currentThreadId && (
           <DocumentWorkspace
-            threadId={currentThreadId}
-            messages={currentThreadMessages}
+            threadId={currentThreadId!}
             userProfile={userProfile}
             width={workspaceWidth}
             documentRevision={documentRevision}

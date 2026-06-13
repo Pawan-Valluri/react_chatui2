@@ -22,3 +22,9 @@ app.add_middleware(
 # Mount logical sub-routers
 app.include_router(user.router)
 app.include_router(threads.router)
+
+from core.api_router import router as core_router
+app.include_router(core_router)
+
+from app.routers import mock_playground
+app.include_router(mock_playground.router)

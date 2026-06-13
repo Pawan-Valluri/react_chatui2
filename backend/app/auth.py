@@ -13,11 +13,11 @@ def get_current_user(
     bluetoken: Optional[str] = Cookie(None)
 ):
     # Print debug info to console to diagnose cookie/session forwarding issues
-    print("\n--- [SSO SESSION CHECK] ---")
-    print(f"  URL: {request.url}")
-    print(f"  Headers: {dict(request.headers)}")
-    print(f"  Cookies: {dict(request.cookies)}")
-    print("-----------------------------\n")
+    # print("\n--- [SSO SESSION CHECK] ---")
+    # print(f"  URL: {request.url}")
+    # print(f"  Headers: {dict(request.headers)}")
+    # print(f"  Cookies: {dict(request.cookies)}")
+    # print("-----------------------------\n")
 
     user_id = None
     user_email = None

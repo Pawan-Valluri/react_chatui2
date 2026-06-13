@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { DocxEditor } from "@eigenpal/docx-editor-react";
 import "@eigenpal/docx-editor-react/styles.css";
@@ -70,18 +70,10 @@ const PlaygroundApp = () => {
     });
     dispatch(tr);
 
-    const nodeKeys = Object.keys(schema.nodes);
-    const tName = nodeKeys.find(n => n === 'table' || n === 'tbl' || n === 'tableNode') || 'table';
-    const rName = nodeKeys.find(n => n === 'table_row' || n === 'tableRow' || n === 'tr') || 'table_row';
-    const cName = nodeKeys.find(n => n === 'table_cell' || n === 'tableCell' || n === 'tc') || 'table_cell';
-    const tableType = schema.nodes[tName];
-    const rowType = schema.nodes[rName];
-    const cellType = schema.nodes[cName];
-
     // Use agent.executeCommands if available
-    const editorRef = (window as any)._editorRef;
-    if (editorRef && editorRef.current) {
-      const agent = editorRef.current.getAgent();
+    const winEditorRef = (window as any)._editorRef;
+    if (winEditorRef && winEditorRef.current) {
+      const agent = winEditorRef.current.getAgent();
       if (agent && agent.executeCommands) {
         console.log('Calling agent.executeCommands');
         try {

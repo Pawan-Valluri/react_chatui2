@@ -7,14 +7,12 @@ import "./DocumentWorkspace.scss";
 interface DocumentWorkspaceProps {
   threadId: string;
   userProfile?: any;
-  width: number;
   documentRevision: number;
 }
 
 export const DocumentWorkspace: React.FC<DocumentWorkspaceProps> = ({
   threadId,
   userProfile,
-  width,
   documentRevision,
 }) => {
   const editorRef = useRef<any>(null);
@@ -65,7 +63,6 @@ export const DocumentWorkspace: React.FC<DocumentWorkspaceProps> = ({
             yDoc={yDoc}
             onChange={handleLocalChange}
             userProfile={userProfile}
-            width={width}
             documentRevision={documentRevision}
           />
         ) : (

@@ -303,7 +303,6 @@ export function App({ config }: AppProps = {}) {
           <DocumentWorkspace
             threadId={currentThreadId!}
             userProfile={userProfile}
-            width={workspaceWidth}
             documentRevision={documentRevision}
           />
         )}

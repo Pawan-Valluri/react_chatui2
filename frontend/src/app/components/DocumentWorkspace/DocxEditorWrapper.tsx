@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React from "react";
 import { DocxEditor } from "@eigenpal/docx-editor-react";
 import { SyncEngine } from "../../../sync/SyncEngine";
 import * as Y from "yjs";
@@ -10,17 +10,15 @@ interface DocxEditorWrapperProps {
   yDoc: Y.Doc;
   onChange: () => void;
   userProfile?: any;
-  width: number;
   documentRevision: number;
 }
 
-export const DocxEditorWrapper: React.FC<DocxEditorWrapperProps> = ({
+const DocxEditorWrapperComponent: React.FC<DocxEditorWrapperProps> = ({
   editorRef,
   documentBuffer,
   yDoc,
   onChange,
   userProfile,
-  width,
   documentRevision,
 }) => {
   const userName = userProfile?.fullname || userProfile?.uid || "Beyond Developer";
@@ -50,5 +48,20 @@ export const DocxEditorWrapper: React.FC<DocxEditorWrapperProps> = ({
     </div>
   );
 };
+
+export const DocxEditorWrapper = React.memo<DocxEditorWrapperProps>(
+  DocxEditorWrapperComponent,
+  (prev, next) => {
+    return (
+      prev.documentRevision === next.documentRevision &&
+      prev.documentBuffer === next.documentBuffer &&
+      prev.yDoc === next.yDoc &&
+      prev.onChange === next.onChange &&
+      prev.userProfile === next.userProfile &&
+      prev.editorRef === next.editorRef
+    );
+  }
+);
+
 export default DocxEditorWrapper;
 

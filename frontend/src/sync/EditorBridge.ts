@@ -17,9 +17,6 @@ export class EditorBridge {
 
   /**
    * Helper to map a style name (e.g. "Table Grid", "heading 1", "title") to the standard DOCX style ID.
-   */
-  /**
-   * Helper to map a style name (e.g. "Table Grid", "heading 1", "title") to the standard DOCX style ID.
    * Uses an algorithmic approach: removes spaces/punctuation and Capitalizes Each Word.
    */
   private getStandardStyleId(requestedStyleName: string | undefined): string | undefined {
@@ -29,6 +26,67 @@ export class EditorBridge {
       .split(/[\s_\-]+/)
       .map(word => word.charAt(0).toUpperCase() + word.slice(1))
       .join('');
+  }
+
+  /**
+   * Helper to generate a valid 8-character hex paragraph ID.
+   */
+  private genParaId(): string {
+    return Math.random().toString(16).slice(2, 10).toUpperCase();
+  }
+
+  /**
+   * Resolves a style by ID or name from the document package styles definitions,
+   * traversing and merging the `basedOn` inheritance chain.
+   */
+  private resolveStyle(styleId: string | undefined): { pPr: any; rPr: any; tblPr: any; tblStylePr: any; actualStyleId: string } | null {
+    if (!styleId) return null;
+    
+    const doc = this.editorRef?.getDocument?.();
+    const styles = doc?.package?.styles?.styles || [];
+    if (styles.length === 0) return null;
+    
+    const cleanId = styleId.toLowerCase().replace(/[\s_\-]+/g, '');
+    
+    // Try exact or clean name match
+    let currentStyle = styles.find((s: any) => 
+      s.styleId.toLowerCase() === cleanId || 
+      (s.name && s.name.toLowerCase().replace(/[\s_\-]+/g, '') === cleanId)
+    );
+    
+    // Fuzzy search fallback
+    if (!currentStyle) {
+      currentStyle = styles.find((s: any) => {
+        const sIdClean = s.styleId.toLowerCase().replace(/[\s_\-]+/g, '');
+        const sNameClean = (s.name || '').toLowerCase().replace(/[\s_\-]+/g, '');
+        return sIdClean.includes(cleanId) || sNameClean.includes(cleanId);
+      });
+    }
+    
+    if (!currentStyle) return null;
+    
+    let pPr = {};
+    let rPr = {};
+    let tblPr = {};
+    let tblStylePr: any[] = [];
+    const actualStyleId = currentStyle.styleId;
+    
+    const visited = new Set<string>();
+    let walkStyle = currentStyle;
+    
+    while (walkStyle && !visited.has(walkStyle.styleId)) {
+      visited.add(walkStyle.styleId);
+      
+      if (walkStyle.pPr) pPr = { ...walkStyle.pPr, ...pPr };
+      if (walkStyle.rPr) rPr = { ...walkStyle.rPr, ...rPr };
+      if (walkStyle.tblPr) tblPr = { ...walkStyle.tblPr, ...tblPr };
+      if (walkStyle.tblStylePr) tblStylePr = [ ...walkStyle.tblStylePr, ...tblStylePr ];
+      
+      const parentId = walkStyle.basedOn;
+      walkStyle = parentId ? styles.find((s: any) => s.styleId === parentId) : null;
+    }
+    
+    return { pPr, rPr, tblPr, tblStylePr, actualStyleId };
   }
 
   /**
@@ -58,27 +116,42 @@ export class EditorBridge {
       switch (toolName) {
         case 'apply_style': {
           const { targetId, styleId } = args;
-          const cleanStyleId = this.getStandardStyleId(styleId);
           const target = this.findNodePosById(targetId);
-          if (target && cleanStyleId) {
-             let newAttrs = { ...target.node.attrs, styleId: cleanStyleId };
-             // Dynamically extract style formatting
-             const stylesKey = Object.keys(this.view.state).find(k => k.startsWith('documentStyles$'));
-             if (stylesKey) {
-                const stylesState = (this.view.state as any)[stylesKey];
-                const stylesById = stylesState?.stylesById || {};
+          if (target && styleId) {
+             const resolved = this.resolveStyle(styleId);
+             let newAttrs = { ...target.node.attrs };
+             if (resolved) {
+                newAttrs.styleId = resolved.actualStyleId;
                 
-                let matchedStyleId = cleanStyleId;
-                if (!stylesById[matchedStyleId]) {
-                   const possibleKeys = Object.keys(stylesById).filter(k => k.toLowerCase() === matchedStyleId.toLowerCase());
-                   if (possibleKeys.length > 0) matchedStyleId = possibleKeys[0];
+                if (target.node.type.name === 'paragraph') {
+                   const cleanAttrs = {
+                      paraId: target.node.attrs.paraId,
+                      styleId: resolved.actualStyleId,
+                      ...resolved.pPr
+                   };
+                   if (Object.keys(resolved.rPr).length > 0) {
+                      (cleanAttrs as any).defaultTextFormatting = resolved.rPr;
+                   }
+                   newAttrs = cleanAttrs;
+                } else if (target.node.type.name === 'table') {
+                   newAttrs._originalFormatting = {
+                      tblPr: resolved.tblPr,
+                      tblStylePr: resolved.tblStylePr
+                   };
+                   newAttrs.look = {
+                      firstRow: true,
+                      firstColumn: true,
+                      lastRow: false,
+                      lastColumn: false,
+                      noHBand: false,
+                      noVBand: true
+                   };
+                   if ((resolved.tblPr as any).cellMargins) {
+                      newAttrs.cellMargins = (resolved.tblPr as any).cellMargins;
+                   }
                 }
-                
-                const pStyle = stylesById[matchedStyleId];
-                if (pStyle) {
-                   if (pStyle.paragraphFormatting) newAttrs.paragraphFormatting = pStyle.paragraphFormatting;
-                   if (pStyle.runFormatting) newAttrs.runFormatting = pStyle.runFormatting;
-                }
+             } else {
+                newAttrs.styleId = this.getStandardStyleId(styleId);
              }
              tr = tr.setNodeMarkup(target.pos, null, newAttrs);
           }
@@ -87,7 +160,6 @@ export class EditorBridge {
 
         case 'insert_paragraph': {
           const { targetId, position, text, styleId } = args;
-          const cleanStyleId = this.getStandardStyleId(styleId);
           let insertPos = state.doc.content.size;
           state.doc.descendants((node, p) => {
             if (node.type.name === 'body' || node.type.name === 'section') {
@@ -102,26 +174,22 @@ export class EditorBridge {
             }
           }
           
-          const paraId = genParaId();
+          const paraId = this.genParaId();
           let pAttrs: any = { paraId };
-          if (cleanStyleId) {
-             pAttrs.styleId = cleanStyleId;
-             const stylesKey = Object.keys(this.view.state).find(k => k.startsWith('documentStyles$'));
-             if (stylesKey) {
-                const stylesState = (this.view.state as any)[stylesKey];
-                const stylesById = stylesState?.stylesById || {};
-                
-                let matchedStyleId = cleanStyleId;
-                if (!stylesById[matchedStyleId]) {
-                   const possibleKeys = Object.keys(stylesById).filter(k => k.toLowerCase() === matchedStyleId.toLowerCase());
-                   if (possibleKeys.length > 0) matchedStyleId = possibleKeys[0];
+          
+          if (styleId) {
+             const resolved = this.resolveStyle(styleId);
+             if (resolved) {
+                pAttrs.styleId = resolved.actualStyleId;
+                pAttrs = {
+                   ...pAttrs,
+                   ...resolved.pPr
+                };
+                if (Object.keys(resolved.rPr).length > 0) {
+                   pAttrs.defaultTextFormatting = resolved.rPr;
                 }
-                
-                const pStyle = stylesById[matchedStyleId];
-                if (pStyle) {
-                   if (pStyle.paragraphFormatting) pAttrs.paragraphFormatting = pStyle.paragraphFormatting;
-                   if (pStyle.runFormatting) pAttrs.runFormatting = pStyle.runFormatting;
-                }
+             } else {
+                pAttrs.styleId = this.getStandardStyleId(styleId);
              }
           }
           
@@ -132,7 +200,6 @@ export class EditorBridge {
 
         case 'insert_table': {
           const { targetId, position, rows, cols, styleId } = args;
-          const cleanStyleId = this.getStandardStyleId(styleId);
 
           let insertPos = state.doc.content.size;
           state.doc.descendants((node, p) => {
@@ -163,14 +230,12 @@ export class EditorBridge {
             break;
           }
           
-          const genParaId = () => Math.random().toString(16).slice(2, 10).toUpperCase();
-
           const tableRows = [];
           for (let i = 0; i < rows; i++) {
             const cells = [];
             for (let j = 0; j < cols; j++) {
               const textNode = schema.text(`Cell ${i},${j}`);
-              const p = schema.nodes.paragraph.create({ paraId: genParaId() }, textNode);
+              const p = schema.nodes.paragraph.create({ paraId: this.genParaId() }, textNode);
               cells.push(cellType.create({}, p));
             }
             tableRows.push(rowType.create({}, cells));
@@ -181,43 +246,35 @@ export class EditorBridge {
           const tableAttrs: any = { 
              columnWidths: columnWidths 
           };
-          if (cleanStyleId) {
-             tableAttrs.styleId = cleanStyleId;
-             
-             // Dynamically extract style formatting from the documentStyles$ plugin
-             const stylesKey = Object.keys(this.view.state).find(k => k.startsWith('documentStyles$'));
-             if (stylesKey) {
-                const stylesState = (this.view.state as any)[stylesKey];
-                const stylesById = stylesState?.stylesById || {};
-                
-                // Fuzzy match the style ID since DOCX often appends 'Table' to the ID
-                let matchedStyleId = cleanStyleId;
-                if (!stylesById[matchedStyleId]) {
-                   const possibleKeys = Object.keys(stylesById).filter(k => 
-                      k.toLowerCase() === matchedStyleId.toLowerCase() || 
-                      k.toLowerCase() === matchedStyleId.toLowerCase() + 'table' ||
-                      k.toLowerCase().replace('table', '') === matchedStyleId.toLowerCase().replace('table', '')
-                   );
-                   if (possibleKeys.length > 0) {
-                      matchedStyleId = possibleKeys[0];
-                   }
+          
+          if (styleId) {
+             const resolved = this.resolveStyle(styleId);
+             if (resolved) {
+                tableAttrs.styleId = resolved.actualStyleId;
+                tableAttrs._originalFormatting = {
+                   tblPr: resolved.tblPr,
+                   tblStylePr: resolved.tblStylePr
+                };
+                tableAttrs.look = { 
+                   firstRow: true, 
+                   firstColumn: true, 
+                   lastRow: false, 
+                   lastColumn: false, 
+                   noHBand: false, 
+                   noVBand: true 
+                };
+                if ((resolved.tblPr as any).cellMargins) {
+                   tableAttrs.cellMargins = (resolved.tblPr as any).cellMargins;
                 }
-                
-                const tableStyle = stylesById[matchedStyleId];
-                if (tableStyle && tableStyle.tableFormatting) {
-                   const tf = tableStyle.tableFormatting;
-                   if (tf.borders) tableAttrs.tblBorders = tf.borders;
-                   if (tf.shading) tableAttrs.shd = tf.shading;
-                   // Cell defaults
-                   if (tf.cellMargin) tableAttrs.tblCellSpacing = tf.cellMargin;
-                }
+             } else {
+                tableAttrs.styleId = this.getStandardStyleId(styleId);
              }
           }
           
           const tableNode = tableType.create(tableAttrs, tableRows);
           tr = tr.insert(insertPos, tableNode);
           
-          const emptyP = schema.nodes.paragraph.create({ paraId: genParaId() });
+          const emptyP = schema.nodes.paragraph.create({ paraId: this.genParaId() });
           tr = tr.insert(insertPos + tableNode.nodeSize, emptyP);
           break;
         }
@@ -239,22 +296,21 @@ export class EditorBridge {
               insertPos = position === 'before' ? target.pos : target.pos + target.node.nodeSize;
             }
           }
-          const newId = crypto.randomUUID();
           
           const nodeKeys = Object.keys(schema.nodes);
           const lName = nodeKeys.find(n => n === 'list_item' || n === 'listItem' || n === 'li') || 'list_item';
           const listItemType = schema.nodes[lName];
           
           const listItems = items.map((text: string) => {
-            const p = schema.nodes.paragraph.create({ id: crypto.randomUUID() }, schema.text(text));
-            return listItemType ? listItemType.create({ id: crypto.randomUUID() }, p) : schema.nodes.list_item.create({ id: crypto.randomUUID() }, p);
+            const p = schema.nodes.paragraph.create({ paraId: this.genParaId() }, schema.text(text));
+            return listItemType ? listItemType.create({ paraId: this.genParaId() }, p) : schema.nodes.list_item.create({ paraId: this.genParaId() }, p);
           });
           
           const listType = cleanStyleId === 'NumberedList' ? schema.nodes.ordered_list : schema.nodes.bullet_list;
-          const listNode = listType.create({ id: newId, styleId: cleanStyleId }, listItems);
+          const listNode = listType.create({ styleId: cleanStyleId }, listItems);
           tr = tr.insert(insertPos, listNode);
           
-          const emptyP = schema.nodes.paragraph.create({ id: crypto.randomUUID() });
+          const emptyP = schema.nodes.paragraph.create({ paraId: this.genParaId() });
           tr = tr.insert(insertPos + listNode.nodeSize, emptyP);
           break;
         }

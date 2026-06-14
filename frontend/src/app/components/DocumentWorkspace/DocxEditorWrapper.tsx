@@ -26,6 +26,16 @@ const DocxEditorWrapperComponent: React.FC<DocxEditorWrapperProps> = ({
   // Memoize plugins to avoid Editor re-initializations
   const plugins = React.useMemo(() => SyncEngine.getPlugins(yDoc), [yDoc]);
 
+  React.useEffect(() => {
+    if (editorRef.current && typeof editorRef.current.setZoom === "function") {
+      try {
+        editorRef.current.setZoom(1.0);
+      } catch (err) {
+        console.warn("Failed to force editor zoom to 1.0:", err);
+      }
+    }
+  }, [editorRef, documentBuffer, documentRevision]);
+
   return (
     <div style={{
       width: "100%",

@@ -511,9 +511,8 @@ export class EditorBridge {
                    target.node.forEach((childNode) => {
                       if (childNode.isText) {
                          const originalMarks = childNode.marks;
-                         
-                         const positiveOverrides = [];
-                         const negativeOverrides = new Set();
+                         const positiveOverrides: any[] = [];
+                         const negativeOverrides = new Set<string>();
                          const styleMarkNames = ['bold', 'italic', 'underline', 'strike', 'textColor', 'fontSize', 'fontFamily', 'highlight', 'subscript', 'superscript', 'tracking', 'letterSpacing', 'allCaps', 'smallCaps'];
                          
                          this.diffStyleMarks(originalMarks, oldResolved, theme, positiveOverrides, negativeOverrides);

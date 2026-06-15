@@ -117,20 +117,20 @@ export function useDocumentSync({
       
       // Check IndexedDB cache
       const { TemplateCache } = await import("../../../sync/TemplateCache");
-      let cachedBuffer = await TemplateCache.get(themeHash);
+      let cachedBuffer = await TemplateCache.get(themeHash!);
       
       if (!cachedBuffer) {
-        console.log(`Cache miss for themeHash ${themeHash}, fetching template from backend...`);
-        const templateRes = await fetch(`/api/templates/${themeHash}`);
+        console.log(`Cache miss for themeHash ${themeHash!}, fetching template from backend...`);
+        const templateRes = await fetch(`/api/templates/${themeHash!}`);
         if (!templateRes.ok) {
-          throw new Error(`Failed to fetch template binary for hash ${themeHash}`);
+          throw new Error(`Failed to fetch template binary for hash ${themeHash!}`);
         }
         const templateBlob = await templateRes.blob();
         cachedBuffer = await templateBlob.arrayBuffer();
-        await TemplateCache.set(themeHash, cachedBuffer);
-        console.log(`Cached template binary for themeHash ${themeHash}`);
+        await TemplateCache.set(themeHash!, cachedBuffer);
+        console.log(`Cached template binary for themeHash ${themeHash!}`);
       } else {
-        console.log(`Cache hit for themeHash ${themeHash}`);
+        console.log(`Cache hit for themeHash ${themeHash!}`);
       }
       
       setDocumentBuffer(cachedBuffer);

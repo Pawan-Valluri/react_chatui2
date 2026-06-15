@@ -2,7 +2,7 @@ import { Plugin } from 'prosemirror-state';
 import { Decoration, DecorationSet } from 'prosemirror-view';
 import { Node as PMNode } from 'prosemirror-model';
 
-function getNumberString(value: number, format: string): string {
+export function getNumberString(value: number, format: string): string {
   if (format === 'lowerLetter') {
     return String.fromCharCode(96 + value); // 1 -> 'a'
   }
@@ -18,7 +18,7 @@ function getNumberString(value: number, format: string): string {
   return value.toString();
 }
 
-function toRoman(num: number): string {
+export function toRoman(num: number): string {
   const lookup: [string, number][] = [
     ['M', 1000], ['CM', 900], ['D', 500], ['CD', 400],
     ['C', 100], ['XC', 90], ['L', 50], ['XL', 40],
@@ -35,7 +35,7 @@ function toRoman(num: number): string {
   return roman;
 }
 
-function formatLevelText(lvlText: string, levelValues: string[]): string {
+export function formatLevelText(lvlText: string, levelValues: string[]): string {
   let result = lvlText;
   for (let i = 0; i < levelValues.length; i++) {
     result = result.replace(`%${i + 1}`, levelValues[i]);
@@ -43,7 +43,7 @@ function formatLevelText(lvlText: string, levelValues: string[]): string {
   return result;
 }
 
-function cleanMarkerText(text: string, isBullet: boolean, ilvl: number): string {
+export function cleanMarkerText(text: string, isBullet: boolean, ilvl: number): string {
   let cleaned = text;
   
   // Replace Wingdings/Symbol private use area characters with standard bullets
@@ -151,12 +151,115 @@ function computeDecos(doc: PMNode): DecorationSet {
   return DecorationSet.create(doc, decos);
 }
 
+function wrapTableToDOM(originalToDOM: any) {
+  return function(node: any) {
+    const result = originalToDOM(node);
+    if (!result) return result;
+
+    const extraAttrs: Record<string, string> = {};
+    if (node.attrs.styleId) {
+      extraAttrs['data-style-id'] = node.attrs.styleId;
+    }
+    if (node.attrs.look) {
+      extraAttrs['data-look'] = typeof node.attrs.look === 'string'
+        ? node.attrs.look
+        : JSON.stringify(node.attrs.look);
+    }
+    if (node.attrs.tblLook) {
+      extraAttrs['data-tbl-look'] = node.attrs.tblLook;
+    }
+    if (node.attrs.cellMargins) {
+      extraAttrs['data-cell-margins'] = typeof node.attrs.cellMargins === 'string'
+        ? node.attrs.cellMargins
+        : JSON.stringify(node.attrs.cellMargins);
+    }
+    if (node.attrs._originalFormatting) {
+      extraAttrs['data-original-formatting'] = typeof node.attrs._originalFormatting === 'string'
+        ? node.attrs._originalFormatting
+        : JSON.stringify(node.attrs._originalFormatting);
+    }
+    if (node.attrs.columnWidths) {
+      extraAttrs['data-column-widths'] = typeof node.attrs.columnWidths === 'string'
+        ? node.attrs.columnWidths
+        : JSON.stringify(node.attrs.columnWidths);
+    }
+    if (node.attrs.width !== undefined && node.attrs.width !== null) {
+      extraAttrs['data-width'] = String(node.attrs.width);
+    }
+    if (node.attrs.widthType) {
+      extraAttrs['data-width-type'] = node.attrs.widthType;
+    }
+    if (node.attrs.justification) {
+      extraAttrs['data-justification'] = node.attrs.justification;
+    }
+    if (node.attrs.tableLayout) {
+      extraAttrs['data-table-layout'] = node.attrs.tableLayout;
+    }
+    if (node.attrs.floating) {
+      extraAttrs['data-floating'] = typeof node.attrs.floating === 'string'
+        ? node.attrs.floating
+        : JSON.stringify(node.attrs.floating);
+    }
+
+    if (result && typeof result.setAttribute === 'function') {
+      Object.entries(extraAttrs).forEach(([k, v]) => {
+        result.setAttribute(k, v);
+      });
+      return result;
+    }
+
+    if (Array.isArray(result)) {
+      const tag = result[0];
+      let attrs = result[1];
+      let hasAttrs = true;
+
+      if (
+        attrs === 0 ||
+        Array.isArray(attrs) ||
+        (attrs && typeof attrs.setAttribute === 'function') ||
+        typeof attrs !== 'object' ||
+        attrs === null
+      ) {
+        attrs = {};
+        hasAttrs = false;
+      }
+
+      const mergedAttrs = { ...attrs, ...extraAttrs };
+
+      if (hasAttrs) {
+        const newResult = [...result];
+        newResult[1] = mergedAttrs;
+        return newResult;
+      } else {
+        return [tag, mergedAttrs, ...result.slice(1)];
+      }
+    }
+
+    return result;
+  };
+}
+
 export const docxStylingAndNumberingPlugin = new Plugin({
   state: {
-    init(config, state) {
+    init(_config, state) {
+      const schema = state.schema;
+      Object.keys(schema.nodes).forEach((name) => {
+        const isTable = name === 'table' || name === 'tbl' || name === 'tableNode';
+        if (isTable) {
+          const nodeType = schema.nodes[name];
+          if (nodeType && nodeType.spec && nodeType.spec.toDOM && !(nodeType.spec.toDOM as any).__wrapped) {
+            const original = nodeType.spec.toDOM;
+            nodeType.spec.toDOM = wrapTableToDOM(original);
+            (nodeType.spec.toDOM as any).__wrapped = true;
+            if (schema.cached) {
+              schema.cached.domSerializer = null;
+            }
+          }
+        }
+      });
       return computeDecos(state.doc);
     },
-    apply(tr, oldDecos, oldState, newState) {
+    apply(tr, oldDecos, _oldState, newState) {
       if (tr.docChanged) {
         return computeDecos(newState.doc);
       }
@@ -168,7 +271,7 @@ export const docxStylingAndNumberingPlugin = new Plugin({
       return this.getState(state);
     }
   },
-  appendTransaction(transactions, oldState, newState) {
+  appendTransaction(transactions, _oldState, newState) {
     if (!transactions.some(tr => tr.docChanged)) return null;
     let tr = newState.tr;
     let modified = false;

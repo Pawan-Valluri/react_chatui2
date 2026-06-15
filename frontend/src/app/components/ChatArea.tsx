@@ -37,7 +37,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
   onDocumentUpdated,
   starterPrompts
 }) => {
-  const activeThread = threads.find(t => t.id === currentThreadId);
+  const activeThread = threads.find((t: any) => t?.id === currentThreadId);
 
   return (
     <main className="apcot-main-container">

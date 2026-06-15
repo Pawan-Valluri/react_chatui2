@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import * as Y from "yjs";
-import { DocumentPool } from "../../../sync/DocumentPool";
+import { DocumentPool } from "./sync/DocumentPool";
 import { prosemirrorToYXmlFragment } from "y-prosemirror";
 
 const getEditorView = (editorRef: React.RefObject<any>) => {
@@ -114,7 +114,7 @@ export function useDocumentSync({
       }
       
       // Check IndexedDB cache
-      const { TemplateCache } = await import("../../../sync/TemplateCache");
+      const { TemplateCache } = await import("./sync/TemplateCache");
       let cachedBuffer = await TemplateCache.get(themeHash!);
       
       if (!cachedBuffer) {

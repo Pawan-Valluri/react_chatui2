@@ -1,4 +1,4 @@
-import React, { useRef } from "react";
+import React from "react";
 import { Sparkles } from "lucide-react";
 import { useDocumentSync } from "./useDocumentSync";
 import { DocxEditorWrapper } from "./DocxEditorWrapper";

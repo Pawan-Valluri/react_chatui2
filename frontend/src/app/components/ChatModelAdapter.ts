@@ -6,9 +6,9 @@ export const createChatModelAdapter = (threadId: string, onThreadUpdated?: () =>
     const userMessage = messages[messages.length - 1];
     
     // We no longer rely on `isResume` from the top level because we handle interrupts and resume natively inside the generator!
-    const userMessageId = userMessage.id;
+    const userMessageId = userMessage?.id;
     const parentMessage = messages[messages.length - 2];
-    const parentMessageId = parentMessage ? parentMessage.id : null;
+    const parentMessageId = parentMessage?.id || null;
     const assistantMessageId = unstable_assistantMessageId || crypto.randomUUID();
 
     window.dispatchEvent(new CustomEvent("RequestSaveDocument"));
@@ -52,6 +52,7 @@ export const createChatModelAdapter = (threadId: string, onThreadUpdated?: () =>
 
     try {
       while (true) {
+        if (!reader) break;
         const { done, value } = await reader.read();
         if (done) {
           window.dispatchEvent(new CustomEvent("StreamComplete", {
@@ -85,7 +86,7 @@ export const createChatModelAdapter = (threadId: string, onThreadUpdated?: () =>
               // 1. Execute tools synchronously against the Editor
               const client_results = [];
               try {
-                const { EditorBridge } = await import("../../sync/EditorBridge");
+                const { EditorBridge } = await import("./DocumentWorkspace/sync/EditorBridge");
                 const { GlobalEditorContext } = await import("./DocumentEditorContext");
                 
                 const editorRef = GlobalEditorContext.editorRef;
@@ -104,21 +105,21 @@ export const createChatModelAdapter = (threadId: string, onThreadUpdated?: () =>
                     const bridge = new EditorBridge(view, editorRef.current);
                     for (const tc of toolCalls) {
                       try {
-                        bridge.executeToolCall(tc.name, tc.args);
-                        client_results.push({ tool_call_id: tc.id, output: "Success" });
+                        bridge.executeToolCall(tc?.name, tc?.args);
+                        client_results.push({ tool_call_id: tc?.id, output: "Success" });
                       } catch (err: any) {
-                        client_results.push({ tool_call_id: tc.id, output: "Error: " + err.message });
+                        client_results.push({ tool_call_id: tc?.id, output: "Error: " + err.message });
                       }
                     }
                     GlobalEditorContext.markUnsaved();
                   } else {
-                    toolCalls.forEach((tc: any) => client_results.push({ tool_call_id: tc.id, output: "Error: No Editor View" }));
+                    toolCalls.forEach((tc: any) => client_results.push({ tool_call_id: tc?.id, output: "Error: No Editor View" }));
                   }
                 } else {
-                  toolCalls.forEach((tc: any) => client_results.push({ tool_call_id: tc.id, output: "Error: No Editor Ref" }));
+                  toolCalls.forEach((tc: any) => client_results.push({ tool_call_id: tc?.id, output: "Error: No Editor Ref" }));
                 }
               } catch (e: any) {
-                 toolCalls.forEach((tc: any) => client_results.push({ tool_call_id: tc.id, output: "Error: " + e.message }));
+                 toolCalls.forEach((tc: any) => client_results.push({ tool_call_id: tc?.id, output: "Error: " + e.message }));
               }
               
               // 2. POST results to /resume
@@ -138,7 +139,7 @@ export const createChatModelAdapter = (threadId: string, onThreadUpdated?: () =>
               }
               
               // 3. Swap the reader to continue streaming the resumed response seamlessly!
-              reader.releaseLock();
+              if (reader) reader.releaseLock();
               reader = resumeResponse.body?.getReader();
               if (!reader) break;
               

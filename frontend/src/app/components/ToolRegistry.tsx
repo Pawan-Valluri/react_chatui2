@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { makeAssistantToolUI } from "@assistant-ui/react";
 import { CheckIcon, CpuIcon, ChevronDownIcon } from "./Icons";
 import { Mirage } from "./loaders";

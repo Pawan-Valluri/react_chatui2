@@ -1,6 +1,6 @@
 import React from "react";
 import { DocxEditor } from "@eigenpal/docx-editor-react";
-import { SyncEngine } from "../../../sync/SyncEngine";
+import { SyncEngine } from "./sync/SyncEngine";
 import * as Y from "yjs";
 import "@eigenpal/docx-editor-react/styles.css";
 

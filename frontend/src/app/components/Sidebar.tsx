@@ -219,12 +219,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
           ) : (
             filteredThreads.map((thread) => {
-              const isActive = thread.id === currentThreadId;
+              const isActive = thread?.id === currentThreadId;
               return (
                 <div
-                  key={thread.id}
+                  key={thread?.id}
                   className={`apcot-thread-row ${isActive ? "active" : ""}`}
-                  onClick={() => onSelectThread(thread.id)}
+                  onClick={() => onSelectThread(thread?.id)}
                 >
                   <div className="apcot-thread-info">
                     <span className="apcot-thread-title" title={thread.title}>
@@ -234,7 +234,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   
                   <button
                     className="apcot-thread-delete-btn"
-                    onClick={(e) => onDeleteThread(thread.id, e)}
+                    onClick={(e) => onDeleteThread(thread?.id, e)}
                     aria-label={`Delete thread ${thread.title}`}
                   >
                     <TrashIcon />

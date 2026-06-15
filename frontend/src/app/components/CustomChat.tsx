@@ -1,7 +1,5 @@
 import React, { useState, useEffect, memo } from "react";
 import { 
-  useAui,
-  useAuiEvent,
   useLocalRuntime, 
   AssistantRuntimeProvider,
   useAuiState,
@@ -10,7 +8,6 @@ import {
   ThreadPrimitive,
   ActionBarPrimitive,
   BranchPickerPrimitive,
-  AuiIf,
   ExportedMessageRepository
 } from "@assistant-ui/react";
 import { MarkdownTextPrimitive } from "@assistant-ui/react-markdown";
@@ -136,8 +133,8 @@ const ThreadMessage = () => {
 
   const isRunning = useAuiState((s) => s.thread.isRunning);
   const isLast = useAuiState((s) => {
-    const msgs = s.thread.messages;
-    return msgs.length > 0 && msgs[msgs.length - 1].id === s.message.id;
+    const msgs = s?.thread?.messages;
+    return msgs && msgs.length > 0 && msgs[msgs.length - 1]?.id === s?.message?.id;
   });
 
   const content = useAuiState((s) => s.message.content) || [];
@@ -390,10 +387,12 @@ export const CustomChat: React.FC<CustomChatProps> = ({
   useEffect(() => {
     if (frozenMessages && frozenMessages.length > 0) {
       try {
-        const branchableItems = frozenMessages.map((m) => ({
-          message: { id: m.id, role: m.role, content: m.content },
-          parentId: m.parentId
-        }));
+        const branchableItems = frozenMessages
+          .filter((m) => m && m.id)
+          .map((m) => ({
+            message: { id: m.id, role: m.role, content: m.content },
+            parentId: m.parentId || null
+          }));
         const repo = ExportedMessageRepository.fromBranchableArray(branchableItems);
         runtime.thread.import(repo);
       } catch (err) {

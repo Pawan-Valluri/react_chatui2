@@ -152,14 +152,16 @@ export function App({ config }: AppProps = {}) {
       const res = await fetch("/api/threads");
       if (res.ok) {
         const data = await res.json();
-        setThreads(data);
-        if (data.length > 0) {
-          if (!currentThreadId) {
-            setCurrentThreadId(data[0].id);
+        if (Array.isArray(data)) {
+          setThreads(data);
+          if (data.length > 0) {
+            if (!currentThreadId && data[0]?.id) {
+              setCurrentThreadId(data[0].id);
+            }
+          } else {
+            // Auto create a thread if DB has no conversations
+            handleCreateThread();
           }
-        } else {
-          // Auto create a thread if DB has no conversations
-          handleCreateThread();
         }
       }
     } catch (err) {
@@ -191,9 +193,11 @@ export function App({ config }: AppProps = {}) {
       });
       if (res.ok) {
         const newThread = await res.json();
-        setThreads((prev) => [newThread, ...prev]);
-        setCurrentThreadId(newThread.id);
-        setIsMobileOpen(false);
+        if (newThread && newThread.id) {
+          setThreads((prev) => [newThread, ...prev]);
+          setCurrentThreadId(newThread.id);
+          setIsMobileOpen(false);
+        }
       }
     } catch (err) {
       console.error("Error creating thread:", err);
@@ -210,7 +214,7 @@ export function App({ config }: AppProps = {}) {
         setThreads((prev) => {
           const updated = prev.filter((t) => t.id !== threadId);
           if (currentThreadId === threadId) {
-            if (updated.length > 0) {
+            if (updated.length > 0 && updated[0]?.id) {
               setCurrentThreadId(updated[0].id);
             } else {
               setCurrentThreadId(null);

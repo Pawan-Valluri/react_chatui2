@@ -157,48 +157,37 @@ function wrapTableToDOM(originalToDOM: any) {
     if (!result) return result;
 
     const extraAttrs: Record<string, string> = {};
-    if (node.attrs.styleId) {
-      extraAttrs['data-style-id'] = node.attrs.styleId;
-    }
-    if (node.attrs.look) {
-      extraAttrs['data-look'] = typeof node.attrs.look === 'string'
-        ? node.attrs.look
-        : JSON.stringify(node.attrs.look);
-    }
-    if (node.attrs.tblLook) {
-      extraAttrs['data-tbl-look'] = node.attrs.tblLook;
-    }
-    if (node.attrs.cellMargins) {
-      extraAttrs['data-cell-margins'] = typeof node.attrs.cellMargins === 'string'
-        ? node.attrs.cellMargins
-        : JSON.stringify(node.attrs.cellMargins);
-    }
+
+    // Dump all node attributes exactly as they are named (and their lowercase versions)
+    Object.keys(node.attrs).forEach(key => {
+      const val = node.attrs[key];
+      if (val !== undefined && val !== null) {
+        const strVal = typeof val === 'object' ? JSON.stringify(val) : String(val);
+        extraAttrs[key] = strVal;
+        extraAttrs[key.toLowerCase()] = strVal;
+      }
+    });
+
+    // Explicitly unwrap _originalFormatting properties just in case the exporter expects them at the top level
     if (node.attrs._originalFormatting) {
-      extraAttrs['data-original-formatting'] = typeof node.attrs._originalFormatting === 'string'
-        ? node.attrs._originalFormatting
-        : JSON.stringify(node.attrs._originalFormatting);
-    }
-    if (node.attrs.columnWidths) {
-      extraAttrs['data-column-widths'] = typeof node.attrs.columnWidths === 'string'
-        ? node.attrs.columnWidths
-        : JSON.stringify(node.attrs.columnWidths);
-    }
-    if (node.attrs.width !== undefined && node.attrs.width !== null) {
-      extraAttrs['data-width'] = String(node.attrs.width);
-    }
-    if (node.attrs.widthType) {
-      extraAttrs['data-width-type'] = node.attrs.widthType;
-    }
-    if (node.attrs.justification) {
-      extraAttrs['data-justification'] = node.attrs.justification;
-    }
-    if (node.attrs.tableLayout) {
-      extraAttrs['data-table-layout'] = node.attrs.tableLayout;
-    }
-    if (node.attrs.floating) {
-      extraAttrs['data-floating'] = typeof node.attrs.floating === 'string'
-        ? node.attrs.floating
-        : JSON.stringify(node.attrs.floating);
+      try {
+        const orig = typeof node.attrs._originalFormatting === 'string'
+          ? JSON.parse(node.attrs._originalFormatting)
+          : node.attrs._originalFormatting;
+          
+        if (orig.tblPr) {
+          const tblPrStr = JSON.stringify(orig.tblPr);
+          extraAttrs['tblPr'] = tblPrStr;
+          extraAttrs['tblpr'] = tblPrStr;
+        }
+        if (orig.tblStylePr) {
+          const tblStylePrStr = JSON.stringify(orig.tblStylePr);
+          extraAttrs['tblStylePr'] = tblStylePrStr;
+          extraAttrs['tblstylepr'] = tblStylePrStr;
+        }
+      } catch (e) {
+        // Ignore JSON parse errors
+      }
     }
 
     if (result && typeof result.setAttribute === 'function') {
@@ -244,8 +233,13 @@ export const docxStylingAndNumberingPlugin = new Plugin({
     init(_config, state) {
       const schema = state.schema;
       Object.keys(schema.nodes).forEach((name) => {
-        const isTable = name === 'table' || name === 'tbl' || name === 'tableNode';
-        if (isTable) {
+        const isTableNode = [
+          'table', 'tbl', 'tableNode',
+          'table_row', 'tableRow', 'tr',
+          'table_cell', 'tableCell', 'tc'
+        ].includes(name);
+        
+        if (isTableNode) {
           const nodeType = schema.nodes[name];
           if (nodeType && nodeType.spec && nodeType.spec.toDOM && !(nodeType.spec.toDOM as any).__wrapped) {
             const original = nodeType.spec.toDOM;

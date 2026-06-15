@@ -42,6 +42,7 @@
 }
 
 .apcot-composer-textarea {
+  position: relative;
   background: transparent;
   border: none;
   outline: none;
@@ -50,12 +51,36 @@
   line-height: 1.5;
   width: 100%;
   resize: none;
+  min-height: 24px;
   max-height: 120px;
-  padding: 4px 0;
   font-family: inherit;
+  padding: 4px 0; // Padding on the container, not the inner input
 
-  &::placeholder {
+  .aui-lexical-input {
+    outline: none;
+    min-height: 24px;
+    width: 100%;
+    cursor: text;
+    user-select: text;
+    -webkit-user-select: text;
+    caret-color: var(--text-primary);
+    color: var(--text-primary);
+    font-weight: 500;
+    display: block;
+    position: relative;
+    z-index: 1;
+  }
+
+  .aui-lexical-placeholder {
+    position: absolute;
+    top: 4px;
+    left: 0;
+    right: 0;
+    pointer-events: none;
     color: var(--text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 }
 
@@ -168,6 +193,7 @@
 }
 
 .apcot-edit-composer-textarea {
+  position: relative;
   background: transparent;
   border: none;
   outline: none;
@@ -178,6 +204,34 @@
   resize: none;
   min-height: 48px;
   font-family: inherit;
+  padding: 4px 0; // Padding on the container, not the inner input
+
+  .aui-lexical-input {
+    outline: none;
+    min-height: 48px;
+    width: 100%;
+    cursor: text;
+    user-select: text;
+    -webkit-user-select: text;
+    caret-color: var(--text-primary);
+    color: var(--text-primary);
+    font-weight: 500;
+    display: block;
+    position: relative;
+    z-index: 1;
+  }
+
+  .aui-lexical-placeholder {
+    position: absolute;
+    top: 4px;
+    left: 0;
+    right: 0;
+    pointer-events: none;
+    color: var(--text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 }
 
 .apcot-edit-composer-actions {

@@ -46,6 +46,7 @@
   line-height: 1.5;
   box-shadow: 0 4px 15px rgba(0, 111, 207, 0.15);
   font-weight: 400;
+  white-space: pre-wrap;
   
   [data-theme="light"] & {
     box-shadow: 0 4px 15px rgba(0, 111, 207, 0.08);
@@ -60,6 +61,7 @@
   opacity: 0;
   transition: opacity $duration-fast $transition-curve;
   padding: 0 4px;
+  user-select: none;
 }
 
 .apcot-user-bubble-wrapper:hover .apcot-user-message-actions {

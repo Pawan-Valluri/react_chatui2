@@ -2,6 +2,7 @@ import React, { useRef } from "react";
 import { Sparkles } from "lucide-react";
 import { useDocumentSync } from "./useDocumentSync";
 import { DocxEditorWrapper } from "./DocxEditorWrapper";
+import { GlobalEditorContext } from "../DocumentEditorContext";
 import "./DocumentWorkspace.scss";
 
 interface DocumentWorkspaceProps {
@@ -15,7 +16,7 @@ export const DocumentWorkspace: React.FC<DocumentWorkspaceProps> = ({
   userProfile,
   documentRevision,
 }) => {
-  const editorRef = useRef<any>(null);
+  const editorRef = GlobalEditorContext.editorRef;
   
   const {
     documentBuffer,
@@ -29,6 +30,8 @@ export const DocumentWorkspace: React.FC<DocumentWorkspaceProps> = ({
     editorRef,
     documentRevision,
   });
+
+  GlobalEditorContext.markUnsaved = handleLocalChange;
 
   return (
     <div className="document-workspace-container">

@@ -290,58 +290,7 @@ export function useDocumentSync({
 
   // Listen for Stateless Remote Tool Execution & Stream Completion
   useEffect(() => {
-    const handleExecuteFrontendTool = (e: any) => {
-      const toolCalls = e.detail.tool_calls;
-      
-      const results: any[] = [];
-      
-      if (editorRef.current) {
-        import("../../../sync/EditorBridge").then(({ EditorBridge }) => {
-          let view = null;
-          try {
-            if (typeof editorRef.current?.getEditorRef === 'function') {
-              const pagedEditorRef = editorRef.current.getEditorRef();
-              if (pagedEditorRef && typeof pagedEditorRef.getView === 'function') {
-                view = pagedEditorRef.getView();
-              }
-            } else if (typeof editorRef.current?.getView === 'function') {
-              view = editorRef.current.getView();
-            } else {
-              view = editorRef.current?.view || editorRef.current?.proseMirrorView;
-            }
-          } catch (err) {
-            console.error("Error accessing editor view:", err);
-          }
-          
-          if (view) {
-            const bridge = new EditorBridge(view, editorRef.current);
-            for (const tc of toolCalls) {
-              try {
-                bridge.executeToolCall(tc.name, tc.args);
-                results.push({ tool_call_id: tc.id, output: "Success" });
-              } catch (err) {
-                console.error(`Tool execution failed for ${tc.name}:`, err);
-                results.push({ tool_call_id: tc.id, output: `Error: ${(err as any).message}` });
-              }
-            }
-            
-            hasUnsavedEditsRef.current = true;
-            window.dispatchEvent(new CustomEvent("FrontendToolResult", { detail: { results } }));
-          } else {
-            console.error("Could not find ProseMirror view on editorRef");
-            for (const tc of toolCalls) {
-               results.push({ tool_call_id: tc.id, output: "Error: Frontend Editor view not found" });
-            }
-            window.dispatchEvent(new CustomEvent("FrontendToolResult", { detail: { results } }));
-          }
-        });
-      } else {
-         for (const tc of toolCalls) {
-            results.push({ tool_call_id: tc.id, output: "Error: editorRef is null" });
-         }
-         window.dispatchEvent(new CustomEvent("FrontendToolResult", { detail: { results } }));
-      }
-    };
+
 
     const handleStreamComplete = async (e: any) => {
       const { userMessageId, parentId, userContent, assistantMessageId, assistantParts } = e.detail;
@@ -392,12 +341,10 @@ export function useDocumentSync({
       window.dispatchEvent(new CustomEvent("DocumentSaved"));
     };
 
-    window.addEventListener("ExecuteFrontendTool", handleExecuteFrontendTool);
     window.addEventListener("StreamComplete", handleStreamComplete);
     window.addEventListener("RollbackFrontendEdits", handleRollback);
     window.addEventListener("RequestSaveDocument", handleRequestSave);
     return () => {
-      window.removeEventListener("ExecuteFrontendTool", handleExecuteFrontendTool);
       window.removeEventListener("StreamComplete", handleStreamComplete);
       window.removeEventListener("RollbackFrontendEdits", handleRollback);
       window.removeEventListener("RequestSaveDocument", handleRequestSave);

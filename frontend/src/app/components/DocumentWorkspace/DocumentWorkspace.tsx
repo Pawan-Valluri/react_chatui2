@@ -20,10 +20,10 @@ export const DocumentWorkspace: React.FC<DocumentWorkspaceProps> = ({
   const {
     documentBuffer,
     yDoc,
-    loading,
     savingStatus,
     error,
     handleLocalChange,
+    guardState,
   } = useDocumentSync({
     threadId,
     editorRef,
@@ -47,14 +47,18 @@ export const DocumentWorkspace: React.FC<DocumentWorkspaceProps> = ({
 
       {/* Editor viewport */}
       <div className="document-editor-viewport">
-        {loading ? (
+        {guardState !== "READY" && guardState !== "ERROR" ? (
           <div className="document-loading-overlay">
             <div className="loading-spinner" />
-            <span>Loading Document Workspace...</span>
+            <span style={{ marginTop: "12px", fontSize: "0.9rem", color: "var(--fg-muted)" }}>
+              {guardState === "FETCHING_SNAPSHOT" && "Fetching document snapshot..."}
+              {guardState === "HYDRATING_STATE" && "Hydrating collaborative state..."}
+              {guardState === "RESOLVING_THEME" && "Resolving design template cache..."}
+            </span>
           </div>
-        ) : error ? (
+        ) : error || guardState === "ERROR" ? (
           <div className="document-loading-overlay" style={{ color: "#ff4d4d" }}>
-            <span>Error: {error}</span>
+            <span>Error: {error || "Failed to initialize document state"}</span>
           </div>
         ) : documentBuffer && yDoc ? (
           <DocxEditorWrapper

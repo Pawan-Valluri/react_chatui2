@@ -1,5 +1,6 @@
 import * as Y from 'yjs';
 import { ySyncPlugin, yUndoPlugin } from 'y-prosemirror';
+import { docxStylingAndNumberingPlugin } from './NumberingPlugin';
 
 /**
  * SyncEngine bridges the ProseMirror editor state with the Yjs CRDT model.
@@ -12,7 +13,8 @@ export class SyncEngine {
     const type = yDoc.getXmlFragment(xmlFragmentName);
     return [
       ySyncPlugin(type),
-      yUndoPlugin()
+      yUndoPlugin(),
+      docxStylingAndNumberingPlugin
     ];
   }
 

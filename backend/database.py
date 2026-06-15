@@ -24,6 +24,8 @@ class DocumentTemplate(Base):
     version_name = Column(String, nullable=False)
     docx_blob = Column(LargeBinary, nullable=False)
     styles_json = Column(Text, nullable=False)
+    theme_hash = Column(String, index=True, nullable=True)
+    numbering_json = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 class Thread(Base):
@@ -51,6 +53,7 @@ class Document(Base):
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     thread_id = Column(String, ForeignKey("threads.id", ondelete="CASCADE"), nullable=False)
     template_id = Column(String, ForeignKey("templates.id"), nullable=True) # Nullable for legacy support initially
+    theme_hash = Column(String, index=True, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     latest_snapshot = Column(LargeBinary, nullable=True)
 
@@ -99,6 +102,63 @@ def get_db():
     finally:
         db.close()
 
+def parse_docx_numbering(docx_blob: bytes) -> str:
+    import zipfile
+    import io
+    import xml.etree.ElementTree as ET
+    try:
+        with zipfile.ZipFile(io.BytesIO(docx_blob)) as z:
+            if "word/numbering.xml" not in z.namelist():
+                return "{}"
+            
+            xml_content = z.read("word/numbering.xml")
+            root = ET.fromstring(xml_content)
+            
+            ns = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+            
+            abstract_nums = {}
+            for abstract_num in root.findall("w:abstractNum", ns):
+                abs_id = abstract_num.attrib.get(f"{{{ns['w']}}}abstractNumId")
+                if not abs_id:
+                    continue
+                
+                levels = {}
+                for lvl in abstract_num.findall("w:lvl", ns):
+                    ilvl = lvl.attrib.get(f"{{{ns['w']}}}ilvl")
+                    if not ilvl:
+                        continue
+                    
+                    num_fmt = lvl.find("w:numFmt", ns)
+                    lvl_text = lvl.find("w:lvlText", ns)
+                    
+                    levels[ilvl] = {
+                        "numFmt": num_fmt.attrib.get(f"{{{ns['w']}}}val") if num_fmt is not None else "decimal",
+                        "lvlText": lvl_text.attrib.get(f"{{{ns['w']}}}val") if lvl_text is not None else "%1",
+                    }
+                abstract_nums[abs_id] = levels
+                
+            nums = {}
+            for num in root.findall("w:num", ns):
+                num_id = num.attrib.get(f"{{{ns['w']}}}numId")
+                if not num_id:
+                    continue
+                
+                abs_num_id_el = num.find("w:abstractNumId", ns)
+                abs_num_id = abs_num_id_el.attrib.get(f"{{{ns['w']}}}val") if abs_num_id_el is not None else None
+                
+                if abs_num_id:
+                    nums[num_id] = {
+                        "abstractNumId": abs_num_id,
+                    }
+            
+            return json.dumps({
+                "abstractNums": abstract_nums,
+                "nums": nums
+            })
+    except Exception as e:
+        print("Failed to parse numbering.xml:", e)
+        return "{}"
+
 # Create tables
 def init_db():
     Base.metadata.create_all(bind=engine)
@@ -122,5 +182,38 @@ def init_db():
                 conn.execute(text("ALTER TABLE messages ADD COLUMN delta_blob BLOB"))
             if 'checkpoint_snapshot' not in msg_cols:
                 conn.execute(text("ALTER TABLE messages ADD COLUMN checkpoint_snapshot BLOB"))
+                
+        # Add theme_hash to templates
+        tpl_cols = [col['name'] for col in inspector.get_columns('templates')]
+        if 'theme_hash' not in tpl_cols:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE templates ADD COLUMN theme_hash VARCHAR"))
+                
+        # Add numbering_json to templates
+        if 'numbering_json' not in tpl_cols:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE templates ADD COLUMN numbering_json TEXT"))
+                
+        # Add theme_hash to documents
+        doc_cols = [col['name'] for col in inspector.get_columns('documents')]
+        if 'theme_hash' not in doc_cols:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE documents ADD COLUMN theme_hash VARCHAR"))
+                
+        # Populate theme_hash and numbering_json for existing templates
+        with SessionLocal() as session:
+            templates = session.query(DocumentTemplate).all()
+            updated = False
+            for t in templates:
+                if not t.theme_hash:
+                    import hashlib
+                    t.theme_hash = hashlib.sha256(t.docx_blob).hexdigest()
+                    updated = True
+                if not t.numbering_json:
+                    t.numbering_json = parse_docx_numbering(t.docx_blob)
+                    updated = True
+            if updated:
+                session.commit()
+                print("Updated template metadata (theme_hash, numbering_json).")
     except Exception as e:
         print("Database migration skipped or error:", e)

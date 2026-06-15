@@ -618,6 +618,29 @@ export const CustomChat: React.FC<CustomChatProps> = ({
     async *run({ messages, abortSignal, unstable_assistantMessageId }) {
       const userMessage = messages[messages.length - 1];
       const userMessageId = userMessage.id;
+
+      // Wait for any unsaved document edits to be saved to the backend
+      await new Promise<void>((resolve) => {
+        let resolved = false;
+        const timeout = setTimeout(() => {
+          if (!resolved) {
+            resolved = true;
+            window.removeEventListener("DocumentSaved", onSaved);
+            resolve();
+          }
+        }, 800);
+
+        const onSaved = () => {
+          if (!resolved) {
+            resolved = true;
+            clearTimeout(timeout);
+            window.removeEventListener("DocumentSaved", onSaved);
+            resolve();
+          }
+        };
+        window.addEventListener("DocumentSaved", onSaved);
+        window.dispatchEvent(new CustomEvent("RequestSaveDocument"));
+      });
       
       // The parent message is the message preceding the newly sent/edited user message
       const parentMessage = messages[messages.length - 2];

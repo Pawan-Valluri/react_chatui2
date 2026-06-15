@@ -124,6 +124,25 @@ export class EditorBridge {
         asciiTheme: rPr.fontFamily.asciiTheme ?? null,
       }));
     }
+    if (rPr.vertAlign && rPr.vertAlign === 'subscript' && schema.marks.subscript) {
+      marks.push(schema.marks.subscript.create());
+    }
+    if (rPr.vertAlign && rPr.vertAlign === 'superscript' && schema.marks.superscript) {
+      marks.push(schema.marks.superscript.create());
+    }
+    if (rPr.spacing) {
+      if (schema.marks.tracking) {
+        marks.push(schema.marks.tracking.create({ value: rPr.spacing }));
+      } else if (schema.marks.letterSpacing) {
+        marks.push(schema.marks.letterSpacing.create({ value: rPr.spacing }));
+      }
+    }
+    if (rPr.caps && schema.marks.allCaps) {
+      marks.push(schema.marks.allCaps.create());
+    }
+    if (rPr.smallCaps && schema.marks.smallCaps) {
+      marks.push(schema.marks.smallCaps.create());
+    }
     return marks;
   }
 
@@ -161,30 +180,36 @@ export class EditorBridge {
   /**
    * Helper to resolve cell borders, shading, and rPr based on position and look flags
    */
+  /**
+   * Helper to resolve cell borders, shading, and rPr based on position and look flags
+   */
   private resolveCellFormatting(
     r: number,
     c: number,
     totalRows: number,
     totalCols: number,
     resolvedStyle: any,
-    theme: any
+    theme: any,
+    lookMap?: any
   ) {
-    if (!resolvedStyle) return { borders: undefined, backgroundColor: undefined, rPr: undefined };
+    if (!resolvedStyle) return { borders: undefined, backgroundColor: undefined, pPr: undefined, rPr: undefined };
 
     const { tblPr, tblStylePr } = resolvedStyle;
     
     let cellShd = tblPr?.shading?.fill;
     
     let cellBorders: any = {};
+    const wrapBorder = (bVal: any) => bVal ? { ...bVal, specificity: 1 } : undefined;
     if (tblPr?.borders) {
       const b = tblPr.borders;
-      cellBorders.top = r === 0 ? b.top : b.insideH;
-      cellBorders.bottom = r === totalRows - 1 ? b.bottom : b.insideH;
-      cellBorders.left = c === 0 ? b.left : b.insideV;
-      cellBorders.right = c === totalCols - 1 ? b.right : b.insideV;
+      cellBorders.top = r === 0 ? wrapBorder(b.top) : wrapBorder(b.insideH);
+      cellBorders.bottom = r === totalRows - 1 ? wrapBorder(b.bottom) : wrapBorder(b.insideH);
+      cellBorders.left = c === 0 ? wrapBorder(b.left) : wrapBorder(b.insideV);
+      cellBorders.right = c === totalCols - 1 ? wrapBorder(b.right) : wrapBorder(b.insideV);
     }
 
-    let cellRPr: any = {};
+    let cellRPr: any = { ...(resolvedStyle.rPr || {}) };
+    let cellPPr: any = { ...(resolvedStyle.pPr || {}) };
 
     const applyConditional = (partType: string) => {
       const part = tblStylePr?.find((p: any) => p.type === partType);
@@ -193,9 +218,19 @@ export class EditorBridge {
           cellShd = part.tcPr.shading.fill;
         }
         if (part.tcPr?.borders) {
-          cellBorders = {
-            ...cellBorders,
-            ...part.tcPr.borders
+          for (const side of ['top', 'bottom', 'left', 'right']) {
+            if (part.tcPr.borders[side]) {
+              cellBorders[side] = {
+                ...part.tcPr.borders[side],
+                specificity: 2
+              };
+            }
+          }
+        }
+        if (part.pPr) {
+          cellPPr = {
+            ...cellPPr,
+            ...part.pPr
           };
         }
         if (part.rPr) {
@@ -207,7 +242,14 @@ export class EditorBridge {
       }
     };
 
-    const look = resolvedStyle.look || { firstRow: true, firstColumn: true, noHBand: false, noVBand: true };
+    const look = lookMap || (resolvedStyle.tblPr?.tblLook?.val ? this.decodeTblLook(resolvedStyle.tblPr.tblLook.val) : {
+      firstRow: true,
+      firstColumn: true,
+      lastRow: false,
+      lastColumn: false,
+      noHBand: false,
+      noVBand: true
+    });
     
     if (!look.noHBand) {
       if (r % 2 === 1) applyConditional('band1Horz');
@@ -236,21 +278,71 @@ export class EditorBridge {
     if (r === totalRows - 1 && c === 0) applyConditional('swCell');
     if (r === totalRows - 1 && c === totalCols - 1) applyConditional('seCell');
 
-    const resolvedBorders = this.resolveBorderColors(cellBorders, theme);
     const resolvedShading = this.resolveThemeColor(cellShd, theme);
     
     return {
-      borders: resolvedBorders,
+      borders: cellBorders,
       backgroundColor: resolvedShading?.rgb ? `#${resolvedShading.rgb}` : undefined,
+      pPr: cellPPr,
       rPr: cellRPr
     };
   }
 
-  /**
-   * Resolves a style by ID or name from the document package styles definitions,
-   * traversing and merging the `basedOn` inheritance chain.
-   */
+  private decodeTblLook(tblLookHex: string | undefined): {
+    firstRow: boolean;
+    lastRow: boolean;
+    firstColumn: boolean;
+    lastColumn: boolean;
+    noHBand: boolean;
+    noVBand: boolean;
+  } {
+    if (!tblLookHex) {
+      return {
+        firstRow: true,
+        lastRow: false,
+        firstColumn: true,
+        lastColumn: false,
+        noHBand: false,
+        noVBand: true
+      };
+    }
+    const val = parseInt(tblLookHex, 16);
+    return {
+      firstRow: (val & 0x0020) !== 0,
+      lastRow: (val & 0x0040) !== 0,
+      firstColumn: (val & 0x0080) !== 0,
+      lastColumn: (val & 0x0100) !== 0,
+      noHBand: (val & 0x0200) !== 0,
+      noVBand: (val & 0x0400) !== 0,
+    };
+  }
+
+  private compareBorders(borderA: any, borderB: any): any {
+    const isNone = (b: any) => !b || b.val === 'nil' || b.val === 'none';
+    if (isNone(borderA) && isNone(borderB)) return borderA || borderB;
+    if (isNone(borderA)) return borderB;
+    if (isNone(borderB)) return borderA;
+
+    const szA = borderA.sz || 0;
+    const szB = borderB.sz || 0;
+    if (szA !== szB) {
+      return szA > szB ? borderA : borderB;
+    }
+
+    const specA = borderA.specificity || 1;
+    const specB = borderB.specificity || 1;
+    if (specA !== specB) {
+      return specA > specB ? borderA : borderB;
+    }
+
+    return borderA;
+  }
+
   private resolveStyle(styleId: string | undefined): { pPr: any; rPr: any; tblPr: any; tblStylePr: any; actualStyleId: string } | null {
+    return this.resolveStyleInternal(styleId, new Set<string>());
+  }
+
+  private resolveStyleInternal(styleId: string | undefined, visited: Set<string>): { pPr: any; rPr: any; tblPr: any; tblStylePr: any; actualStyleId: string } | null {
     if (!styleId) return null;
     
     const doc = this.editorRef?.getDocument?.();
@@ -259,13 +351,11 @@ export class EditorBridge {
     
     const cleanId = styleId.toLowerCase().replace(/[\s_\-]+/g, '');
     
-    // Try exact or clean name match
     let currentStyle = styles.find((s: any) => 
       s.styleId.toLowerCase() === cleanId || 
       (s.name && s.name.toLowerCase().replace(/[\s_\-]+/g, '') === cleanId)
     );
     
-    // Fuzzy search fallback
     if (!currentStyle) {
       currentStyle = styles.find((s: any) => {
         const sIdClean = s.styleId.toLowerCase().replace(/[\s_\-]+/g, '');
@@ -275,6 +365,7 @@ export class EditorBridge {
     }
     
     if (!currentStyle) return null;
+    if (visited.has(currentStyle.styleId)) return null;
     
     let pPr = {};
     let rPr = {};
@@ -282,7 +373,6 @@ export class EditorBridge {
     let tblStylePr: any[] = [];
     const actualStyleId = currentStyle.styleId;
     
-    const visited = new Set<string>();
     let walkStyle = currentStyle;
     
     while (walkStyle && !visited.has(walkStyle.styleId)) {
@@ -294,6 +384,13 @@ export class EditorBridge {
       if (walkStyle.tblStylePr) {
          tblStylePr = this.mergeTblStylePr(walkStyle.tblStylePr, tblStylePr);
       }
+
+      if (walkStyle.link) {
+         const linkedStyle = this.resolveStyleInternal(walkStyle.link, visited);
+         if (linkedStyle && linkedStyle.rPr) {
+            rPr = { ...linkedStyle.rPr, ...rPr };
+         }
+      }
       
       const parentId = walkStyle.basedOn;
       walkStyle = parentId ? styles.find((s: any) => s.styleId === parentId) : null;
@@ -302,13 +399,73 @@ export class EditorBridge {
     return { pPr, rPr, tblPr, tblStylePr, actualStyleId };
   }
 
+  private mapPPrToSchemaAttrs(pPr: any): any {
+    const attrs: any = {};
+    if (!pPr) return attrs;
+
+    // 1. Direct schema-compliant properties
+    const directKeys = [
+      'spaceBefore', 'spaceAfter', 'lineSpacing', 'lineSpacingRule', 'spacingExplicit',
+      'indentLeft', 'indentRight', 'indentFirstLine', 'hangingIndent',
+      'borders', 'shading', 'tabs', 'pageBreakBefore', 'keepNext', 'keepLines',
+      'contextualSpacing', 'numPr', 'numPrFromStyle', 'listNumFmt', 'listIsBullet'
+    ];
+    for (const key of directKeys) {
+      if (pPr[key] !== undefined && pPr[key] !== null) {
+        attrs[key] = pPr[key];
+      }
+    }
+
+    // 2. Nested spacing properties (XML format)
+    if (pPr.spacing) {
+      if (pPr.spacing.before !== undefined && pPr.spacing.before !== null) {
+        attrs.spaceBefore = parseInt(pPr.spacing.before, 10);
+      }
+      if (pPr.spacing.after !== undefined && pPr.spacing.after !== null) {
+        attrs.spaceAfter = parseInt(pPr.spacing.after, 10);
+      }
+      if (pPr.spacing.line !== undefined && pPr.spacing.line !== null) {
+        attrs.lineSpacing = parseInt(pPr.spacing.line, 10);
+      }
+    }
+
+    // 3. Nested indent properties (XML format)
+    const ind = pPr.indent || pPr.indents;
+    if (ind) {
+      if (ind.left !== undefined && ind.left !== null) {
+        attrs.indentLeft = parseInt(ind.left, 10);
+      }
+      if (ind.right !== undefined && ind.right !== null) {
+        attrs.indentRight = parseInt(ind.right, 10);
+      }
+      if (ind.firstLine !== undefined && ind.firstLine !== null) {
+        attrs.indentFirstLine = parseInt(ind.firstLine, 10);
+      }
+      if (ind.hanging !== undefined && ind.hanging !== null) {
+        attrs.hangingIndent = parseInt(ind.hanging, 10);
+      }
+    }
+
+    // 4. Nested shading properties
+    if (pPr.shading || pPr.shd) {
+      attrs.shading = pPr.shading || pPr.shd;
+    }
+
+    // 5. Nested borders properties
+    if (pPr.borders || pPr.pBdr) {
+      attrs.borders = pPr.borders || pPr.pBdr;
+    }
+
+    return attrs;
+  }
+
   /**
    * Helper to find a node by its ID attribute.
    */
   private findNodePosById(targetId: string): { pos: number; node: PMNode } | null {
     let result = null;
     this.view.state.doc.descendants((node, pos) => {
-      if (node.attrs && node.attrs.id === targetId) {
+      if (node.attrs && (node.attrs.id === targetId || node.attrs.paraId === targetId)) {
         result = { pos, node };
         return false; // Stop searching this branch
       }
@@ -334,27 +491,56 @@ export class EditorBridge {
                 newAttrs.styleId = resolved.actualStyleId;
                 
                 if (target.node.type.name === 'paragraph') {
-                   const cleanAttrs = {
-                      paraId: target.node.attrs.paraId,
-                      styleId: resolved.actualStyleId,
-                      ...resolved.pPr
-                   };
-                   if (Object.keys(resolved.rPr).length > 0) {
-                      (cleanAttrs as any).defaultTextFormatting = resolved.rPr;
-                   }
-                   newAttrs = cleanAttrs;
+                    const cleanAttrs = {
+                       paraId: target.node.attrs.paraId,
+                       styleId: resolved.actualStyleId,
+                       ...this.mapPPrToSchemaAttrs(resolved.pPr)
+                    };
+                    if (Object.keys(resolved.rPr).length > 0) {
+                       (cleanAttrs as any).defaultTextFormatting = resolved.rPr;
+                    }
+                    newAttrs = cleanAttrs;
 
                    const theme = this.editorRef?.getDocument?.()?.package?.theme;
-                   const newMarks = this.createMarksFromRPr(resolved.rPr, schema, theme);
+                   const newStyleMarks = this.createMarksFromRPr(resolved.rPr, schema, theme);
+                   
+                   const oldStyleId = target.node.attrs.styleId || 'Normal';
+                   const oldResolved = this.resolveStyle(oldStyleId);
                    
                    const childNodes: PMNode[] = [];
                    target.node.forEach((childNode) => {
                       if (childNode.isText) {
-                         let updatedMarks = childNode.marks;
-                         const styleMarkNames = ['bold', 'italic', 'underline', 'strike', 'textColor', 'fontSize', 'fontFamily', 'highlight'];
-                         updatedMarks = updatedMarks.filter(m => !styleMarkNames.includes(m.type.name));
-                         updatedMarks = [...updatedMarks, ...newMarks];
-                         childNodes.push(schema.text(childNode.text!, updatedMarks));
+                         const originalMarks = childNode.marks;
+                         
+                         const positiveOverrides = [];
+                         const negativeOverrides = new Set();
+                         const styleMarkNames = ['bold', 'italic', 'underline', 'strike', 'textColor', 'fontSize', 'fontFamily', 'highlight', 'subscript', 'superscript', 'tracking', 'letterSpacing', 'allCaps', 'smallCaps'];
+                         
+                         this.diffStyleMarks(originalMarks, oldResolved, theme, positiveOverrides, negativeOverrides);
+                         
+                         // 1. Keep non-style marks (comments, links, etc.)
+                         let finalMarks = originalMarks.filter(m => !styleMarkNames.includes(m.type.name));
+                         
+                         // 2. Merge style-derived marks from new style and positive/negative overrides
+                         for (const newMark of newStyleMarks) {
+                            if (!negativeOverrides.has(newMark.type.name)) {
+                               const override = positiveOverrides.find(o => o.type.name === newMark.type.name);
+                               if (override) {
+                                  finalMarks.push(override);
+                               } else {
+                                  finalMarks.push(newMark);
+                               }
+                            }
+                         }
+                         
+                         // 3. Apply remaining positive overrides not covered by newStyleMarks
+                         for (const override of positiveOverrides) {
+                            if (!finalMarks.some(f => f.type.name === override.type.name)) {
+                               finalMarks.push(override);
+                            }
+                         }
+                         
+                         childNodes.push(schema.text(childNode.text!, finalMarks));
                       } else {
                          childNodes.push(childNode);
                       }
@@ -362,18 +548,20 @@ export class EditorBridge {
                    const newParaNode = schema.nodes.paragraph.create(newAttrs, childNodes);
                    tr = tr.replaceWith(target.pos, target.pos + target.node.nodeSize, newParaNode);
                 } else if (target.node.type.name === 'table') {
+                   const oldStyleId = target.node.attrs.styleId || 'NormalTable';
+                   const oldResolved = this.resolveStyle(oldStyleId);
+                   const oldTblLookHex = target.node.attrs.tblLook || (oldResolved?.tblPr as any)?.tblLook?.val;
+                   const oldLookMap = this.decodeTblLook(oldTblLookHex);
+
                    newAttrs._originalFormatting = {
                       tblPr: resolved.tblPr,
                       tblStylePr: resolved.tblStylePr
                    };
-                   newAttrs.look = {
-                      firstRow: true,
-                      firstColumn: true,
-                      lastRow: false,
-                      lastColumn: false,
-                      noHBand: false,
-                      noVBand: true
-                   };
+                   const tblLookHex = target.node.attrs.tblLook || (resolved.tblPr as any)?.tblLook?.val;
+                   const lookMap = this.decodeTblLook(tblLookHex);
+                   newAttrs.look = lookMap;
+                   newAttrs.tblLook = tblLookHex || "04A0";
+                   
                    if ((resolved.tblPr as any).cellMargins) {
                       newAttrs.cellMargins = (resolved.tblPr as any).cellMargins;
                    }
@@ -388,55 +576,172 @@ export class EditorBridge {
                       });
                    }
 
+                   // 1. Build a 2D grid mapping each grid coordinate to its cellNode and cellFormat reference
+                   const grid: any[][] = Array.from({ length: totalRows }, () => Array(totalCols).fill(null));
+                   const cellNodeList: { cellNode: PMNode; r: number; c: number; colspan: number; rowspan: number; format: any }[] = [];
+                   
+                   for (let r = 0; r < totalRows; r++) {
+                      const rowNode = target.node.child(r);
+                      let currentColIdx = 0;
+                      
+                      for (let c = 0; c < rowNode.childCount; c++) {
+                         while (currentColIdx < totalCols && grid[r][currentColIdx] !== null) {
+                            currentColIdx++;
+                         }
+                         if (currentColIdx >= totalCols) break;
+
+                         const cellNode = rowNode.child(c);
+                         const colspan = cellNode.attrs.colspan || 1;
+                         const rowspan = cellNode.attrs.rowspan || 1;
+                         
+                         const cellFormat = this.resolveCellFormatting(r, currentColIdx, totalRows, totalCols, resolved, theme, lookMap);
+                         
+                         // Merge cell node's own explicit borders with specificity 3
+                         const cellNodeBorders = cellNode.attrs.borders;
+                         if (cellNodeBorders) {
+                            cellFormat.borders = cellFormat.borders || {};
+                            for (const side of ['top', 'bottom', 'left', 'right']) {
+                               if (cellNodeBorders[side]) {
+                                  cellFormat.borders[side] = {
+                                     ...cellNodeBorders[side],
+                                     specificity: 3
+                                  };
+                               }
+                            }
+                         }
+                         
+                         const cellInfo = { cellNode, r, c: currentColIdx, colspan, rowspan, format: cellFormat };
+                         cellNodeList.push(cellInfo);
+                         
+                         for (let ri = 0; ri < rowspan; ri++) {
+                            for (let ci = 0; ci < colspan; ci++) {
+                               if (r + ri < totalRows && currentColIdx + ci < totalCols) {
+                                  grid[r + ri][currentColIdx + ci] = cellInfo;
+                               }
+                            }
+                         }
+                         
+                         currentColIdx += colspan;
+                      }
+                   }
+
+                   // 2. Perform border conflict tie-breaking for adjacent edges
+                   for (let r = 0; r < totalRows; r++) {
+                      for (let c = 0; c < totalCols; c++) {
+                         const current = grid[r][c];
+                         if (!current) continue;
+                         
+                         if (c + 1 < totalCols) {
+                            const right = grid[r][c + 1];
+                            if (right && right.cellNode !== current.cellNode) {
+                               const borderA = current.format.borders?.right;
+                               const borderB = right.format.borders?.left;
+                               const winner = this.compareBorders(borderA, borderB);
+                               
+                               current.format.borders = current.format.borders || {};
+                               right.format.borders = right.format.borders || {};
+                               current.format.borders.right = winner;
+                               right.format.borders.left = winner;
+                            }
+                         }
+                         
+                         if (r + 1 < totalRows) {
+                            const bottom = grid[r + 1][c];
+                            if (bottom && bottom.cellNode !== current.cellNode) {
+                               const borderA = current.format.borders?.bottom;
+                               const borderB = bottom.format.borders?.top;
+                               const winner = this.compareBorders(borderA, borderB);
+                               
+                               current.format.borders = current.format.borders || {};
+                               bottom.format.borders = bottom.format.borders || {};
+                               current.format.borders.bottom = winner;
+                               bottom.format.borders.top = winner;
+                            }
+                         }
+                      }
+                   }
+
+                   // 3. Resolve border colors for the winning borders
+                   for (const info of cellNodeList) {
+                      info.format.borders = this.resolveBorderColors(info.format.borders, theme);
+                   }
+
                    const newRows: PMNode[] = [];
                    for (let r = 0; r < totalRows; r++) {
                       const rowNode = target.node.child(r);
                       const newCells: PMNode[] = [];
-                      let currentColIdx = 0;
                       
                       for (let c = 0; c < rowNode.childCount; c++) {
                          const cellNode = rowNode.child(c);
-                         const colspan = cellNode.attrs.colspan || 1;
-                         
-                         const cellFormat = this.resolveCellFormatting(r, currentColIdx, totalRows, totalCols, resolved, theme);
-                         
-                         const newCellAttrs = {
-                            ...cellNode.attrs,
-                            borders: cellFormat.borders,
-                            backgroundColor: cellFormat.backgroundColor
-                         };
-                         
-                         const newCellParagraphs: PMNode[] = [];
-                         cellNode.forEach((pNode) => {
-                            if (pNode.type.name === 'paragraph') {
-                               const pAttrs = {
-                                  ...pNode.attrs,
+                         const info = cellNodeList.find(x => x.cellNode === cellNode);
+                          const cellFormat = info ? info.format : { borders: undefined, backgroundColor: undefined, rPr: undefined, pPr: undefined };
+                          const oldCellFormat = (oldResolved && info)
+                             ? this.resolveCellFormatting(info.r, info.c, totalRows, totalCols, oldResolved, theme, oldLookMap)
+                             : { borders: undefined, backgroundColor: undefined, rPr: undefined, pPr: undefined };
+                          
+                          const newCellAttrs = {
+                             ...cellNode.attrs,
+                             borders: cellFormat.borders,
+                             backgroundColor: cellFormat.backgroundColor
+                          };
+                          
+                          const newCellParagraphs: PMNode[] = [];
+                          cellNode.forEach((pNode) => {
+                             if (pNode.type.name === 'paragraph') {
+                                const pAttrs = {
+                                   ...pNode.attrs,
                                 };
-                               if (cellFormat.rPr && Object.keys(cellFormat.rPr).length > 0) {
-                                  pAttrs.defaultTextFormatting = cellFormat.rPr;
-                               }
-                               
-                               const newMarks = this.createMarksFromRPr(cellFormat.rPr, schema, theme);
-                               const pChildren: PMNode[] = [];
-                               pNode.forEach((childNode) => {
-                                  if (childNode.isText) {
-                                     let updatedMarks = childNode.marks;
-                                     const styleMarkNames = ['bold', 'italic', 'underline', 'strike', 'textColor', 'fontSize', 'fontFamily', 'highlight'];
-                                     updatedMarks = updatedMarks.filter(m => !styleMarkNames.includes(m.type.name));
-                                     updatedMarks = [...updatedMarks, ...newMarks];
-                                     pChildren.push(schema.text(childNode.text!, updatedMarks));
-                                  } else {
-                                     pChildren.push(childNode);
-                                  }
-                               });
-                               newCellParagraphs.push(schema.nodes.paragraph.create(pAttrs, pChildren));
-                            } else {
-                               newCellParagraphs.push(pNode);
-                            }
-                         });
+                                
+                                if (cellFormat.pPr && Object.keys(cellFormat.pPr).length > 0) {
+                                   Object.assign(pAttrs, this.mapPPrToSchemaAttrs(cellFormat.pPr));
+                                }
+                                
+                                if (cellFormat.rPr && Object.keys(cellFormat.rPr).length > 0) {
+                                   pAttrs.defaultTextFormatting = cellFormat.rPr;
+                                }
+                                
+                                const newMarks = this.createMarksFromRPr(cellFormat.rPr, schema, theme);
+                                const pChildren: PMNode[] = [];
+                                pNode.forEach((childNode) => {
+                                   if (childNode.isText) {
+                                      const originalMarks = childNode.marks;
+                                      const positiveOverrides: any[] = [];
+                                      const negativeOverrides = new Set<string>();
+                                      const styleMarkNames = ['bold', 'italic', 'underline', 'strike', 'textColor', 'fontSize', 'fontFamily', 'highlight', 'subscript', 'superscript', 'tracking', 'letterSpacing', 'allCaps', 'smallCaps'];
+
+                                      this.diffStyleMarks(originalMarks, { rPr: oldCellFormat.rPr }, theme, positiveOverrides, negativeOverrides);
+
+                                      let finalMarks = originalMarks.filter(m => !styleMarkNames.includes(m.type.name));
+
+                                      for (const newMark of newMarks) {
+                                         if (!negativeOverrides.has(newMark.type.name)) {
+                                            const override = positiveOverrides.find(o => o.type.name === newMark.type.name);
+                                            if (override) {
+                                               finalMarks.push(override);
+                                            } else {
+                                               finalMarks.push(newMark);
+                                            }
+                                         }
+                                      }
+
+                                      for (const override of positiveOverrides) {
+                                         if (!finalMarks.some(f => f.type.name === override.type.name)) {
+                                            finalMarks.push(override);
+                                         }
+                                      }
+
+                                      pChildren.push(schema.text(childNode.text!, finalMarks));
+                                   } else {
+                                      pChildren.push(childNode);
+                                   }
+                                });
+                                newCellParagraphs.push(schema.nodes.paragraph.create(pAttrs, pChildren));
+                             } else {
+                                newCellParagraphs.push(pNode);
+                             }
+                          });
                          
                          newCells.push(cellNode.type.create(newCellAttrs, newCellParagraphs));
-                         currentColIdx += colspan;
                       }
                       newRows.push(rowNode.type.create(rowNode.attrs, newCells));
                    }
@@ -478,7 +783,7 @@ export class EditorBridge {
                 pAttrs.styleId = resolved.actualStyleId;
                 pAttrs = {
                    ...pAttrs,
-                   ...resolved.pPr
+                   ...this.mapPPrToSchemaAttrs(resolved.pPr)
                 };
                 if (Object.keys(resolved.rPr).length > 0) {
                    pAttrs.defaultTextFormatting = resolved.rPr;
@@ -557,26 +862,82 @@ export class EditorBridge {
              tableAttrs.styleId = this.getStandardStyleId(styleId);
           }
           
+          // 1. Resolve formatting for all cells
+          const cellFormats: any[][] = [];
+          const lookMap = resolved ? tableAttrs.look : undefined;
+          
+          for (let i = 0; i < rows; i++) {
+             cellFormats.push([]);
+             for (let j = 0; j < cols; j++) {
+                if (resolved) {
+                   cellFormats[i].push(this.resolveCellFormatting(i, j, rows, cols, resolved, theme, lookMap));
+                } else {
+                   cellFormats[i].push({ borders: undefined, backgroundColor: undefined, rPr: undefined, pPr: undefined });
+                }
+             }
+          }
+          
+          // 2. Perform border conflict tie-breaking for adjacent edges
+          for (let i = 0; i < rows; i++) {
+             for (let j = 0; j < cols; j++) {
+                const current = cellFormats[i][j];
+                
+                // Compare with right neighbor
+                if (j + 1 < cols) {
+                   const right = cellFormats[i][j + 1];
+                   const winner = this.compareBorders(current.borders?.right, right.borders?.left);
+                   current.borders = current.borders || {};
+                   right.borders = right.borders || {};
+                   current.borders.right = winner;
+                   right.borders.left = winner;
+                }
+                
+                // Compare with bottom neighbor
+                if (i + 1 < rows) {
+                   const bottom = cellFormats[i + 1][j];
+                   const winner = this.compareBorders(current.borders?.bottom, bottom.borders?.top);
+                   current.borders = current.borders || {};
+                   bottom.borders = bottom.borders || {};
+                   current.borders.bottom = winner;
+                   bottom.borders.top = winner;
+                }
+             }
+          }
+
+          // 3. Resolve border colors for winning borders
+          if (resolved) {
+             for (let i = 0; i < rows; i++) {
+                for (let j = 0; j < cols; j++) {
+                   cellFormats[i][j].borders = this.resolveBorderColors(cellFormats[i][j].borders, theme);
+                }
+             }
+          }
+          
           const tableRows = [];
           for (let i = 0; i < rows; i++) {
             const cells = [];
             for (let j = 0; j < cols; j++) {
               let cellAttrs: any = {};
               let cellRPr: any = null;
+              let cellPPr: any = null;
               
+              const cellFormat = cellFormats[i][j];
               if (resolved) {
-                const cellFormat = this.resolveCellFormatting(i, j, rows, cols, resolved, theme);
                 cellAttrs.borders = cellFormat.borders;
                 cellAttrs.backgroundColor = cellFormat.backgroundColor;
                 cellRPr = cellFormat.rPr;
+                cellPPr = cellFormat.pPr;
               }
               
               const textMarks = cellRPr ? this.createMarksFromRPr(cellRPr, schema, theme) : [];
               const textNode = schema.text(`Cell ${i},${j}`, textMarks);
               
               const pAttrs: any = { paraId: this.genParaId() };
+              if (cellPPr && Object.keys(cellPPr).length > 0) {
+                 Object.assign(pAttrs, this.mapPPrToSchemaAttrs(cellPPr));
+              }
               if (cellRPr && Object.keys(cellRPr).length > 0) {
-                pAttrs.defaultTextFormatting = cellRPr;
+                 pAttrs.defaultTextFormatting = cellRPr;
               }
               const p = schema.nodes.paragraph.create(pAttrs, textNode);
               cells.push(cellType.create(cellAttrs, p));
@@ -610,21 +971,42 @@ export class EditorBridge {
             }
           }
           
-          const nodeKeys = Object.keys(schema.nodes);
-          const lName = nodeKeys.find(n => n === 'list_item' || n === 'listItem' || n === 'li') || 'list_item';
-          const listItemType = schema.nodes[lName];
+          const isBullet = cleanStyleId?.toLowerCase().includes('bullet') || listStyleId?.toLowerCase().includes('bullet');
+          const config = (window as any)._numberingConfig || {};
+          const nums = config.nums || {};
+          const abstractNums = config.abstractNums || {};
           
-          const listItems = items.map((text: string) => {
-            const p = schema.nodes.paragraph.create({ paraId: this.genParaId() }, schema.text(text));
-            return listItemType ? listItemType.create({ paraId: this.genParaId() }, p) : schema.nodes.list_item.create({ paraId: this.genParaId() }, p);
+          let numId = isBullet ? '2' : '1';
+          const targetFmt = isBullet ? 'bullet' : 'decimal';
+          for (const key of Object.keys(nums)) {
+             const absId = nums[key].abstractNumId;
+             const absNum = abstractNums[absId];
+             if (absNum && absNum['0'] && absNum['0'].numFmt === targetFmt) {
+                numId = key;
+                break;
+             }
+          }
+          
+          const paragraphs = items.map((text: string) => {
+             const pAttrs = {
+                paraId: this.genParaId(),
+                numPr: {
+                   numId: numId,
+                   ilvl: 0
+                },
+                indentLeft: 720
+             };
+             return schema.nodes.paragraph.create(pAttrs, text ? schema.text(text) : undefined);
           });
           
-          const listType = cleanStyleId === 'NumberedList' ? schema.nodes.ordered_list : schema.nodes.bullet_list;
-          const listNode = listType.create({ styleId: cleanStyleId }, listItems);
-          tr = tr.insert(insertPos, listNode);
+          let currentInsertPos = insertPos;
+          for (const pNode of paragraphs) {
+             tr = tr.insert(currentInsertPos, pNode);
+             currentInsertPos += pNode.nodeSize;
+          }
           
           const emptyP = schema.nodes.paragraph.create({ paraId: this.genParaId() });
-          tr = tr.insert(insertPos + listNode.nodeSize, emptyP);
+          tr = tr.insert(currentInsertPos, emptyP);
           break;
         }
 
@@ -637,6 +1019,193 @@ export class EditorBridge {
       }
     } catch (err) {
       console.error(`Error executing ${toolName}:`, err);
+    }
+  }
+
+  /**
+   * Helper to perform Comparative Mark Diffing on a set of original marks relative to the old style's resolved properties.
+   */
+  private diffStyleMarks(
+    originalMarks: readonly any[],
+    oldResolved: any,
+    theme: any,
+    positiveOverrides: any[],
+    negativeOverrides: Set<string>
+  ) {
+    const oldRPr = oldResolved?.rPr || {};
+
+    // 1. Check Bold
+    const hasBoldMark = originalMarks.some(m => m.type.name === 'bold');
+    const oldHasBold = !!oldRPr.bold;
+    if (hasBoldMark && !oldHasBold) {
+      const boldMark = originalMarks.find(m => m.type.name === 'bold');
+      if (boldMark) positiveOverrides.push(boldMark);
+    } else if (!hasBoldMark && oldHasBold) {
+      negativeOverrides.add('bold');
+    }
+
+    // 2. Check Italic
+    const hasItalicMark = originalMarks.some(m => m.type.name === 'italic');
+    const oldHasItalic = !!oldRPr.italic;
+    if (hasItalicMark && !oldHasItalic) {
+      const italicMark = originalMarks.find(m => m.type.name === 'italic');
+      if (italicMark) positiveOverrides.push(italicMark);
+    } else if (!hasItalicMark && oldHasItalic) {
+      negativeOverrides.add('italic');
+    }
+
+    // 3. Check Strike
+    const hasStrikeMark = originalMarks.some(m => m.type.name === 'strike');
+    const oldHasStrike = !!(oldRPr.strike || oldRPr.doubleStrike);
+    if (hasStrikeMark && !oldHasStrike) {
+      const strikeMark = originalMarks.find(m => m.type.name === 'strike');
+      if (strikeMark) positiveOverrides.push(strikeMark);
+    } else if (!hasStrikeMark && oldHasStrike) {
+      negativeOverrides.add('strike');
+    }
+
+    // 4. Check Underline
+    const underlineMark = originalMarks.find(m => m.type.name === 'underline');
+    const oldUnderline = oldRPr.underline;
+    if (underlineMark) {
+      if (!oldUnderline) {
+        positiveOverrides.push(underlineMark);
+      } else {
+        const oldStyle = typeof oldUnderline === 'object' ? oldUnderline.style : 'single';
+        let oldColorVal = typeof oldUnderline === 'object' ? oldUnderline.color : undefined;
+        if (oldColorVal) oldColorVal = this.resolveThemeColor(oldColorVal, theme)?.rgb;
+        
+        const markStyle = underlineMark.attrs.style || 'single';
+        const markColor = underlineMark.attrs.color?.rgb || underlineMark.attrs.color;
+
+        if (markStyle !== oldStyle || markColor !== oldColorVal) {
+          positiveOverrides.push(underlineMark);
+        }
+      }
+    } else if (oldUnderline) {
+      negativeOverrides.add('underline');
+    }
+
+    // 5. Check Color (textColor)
+    const textColorMark = originalMarks.find(m => m.type.name === 'textColor');
+    const oldColor = oldRPr.color;
+    if (textColorMark) {
+      if (!oldColor) {
+        positiveOverrides.push(textColorMark);
+      } else {
+        const oldColorVal = this.resolveThemeColor(oldColor, theme);
+        const oldRgb = oldColorVal?.rgb;
+        const oldThemeColor = oldColor.themeColor;
+        const oldThemeTint = oldColor.themeTint;
+        const oldThemeShade = oldColor.themeShade;
+
+        const mAttrs = textColorMark.attrs;
+        if (
+          mAttrs.rgb !== oldRgb ||
+          mAttrs.themeColor !== oldThemeColor ||
+          mAttrs.themeTint !== oldThemeTint ||
+          mAttrs.themeShade !== oldThemeShade
+        ) {
+          positiveOverrides.push(textColorMark);
+        }
+      }
+    } else if (oldColor) {
+      negativeOverrides.add('textColor');
+    }
+
+    // 6. Check Highlight
+    const highlightMark = originalMarks.find(m => m.type.name === 'highlight');
+    const oldHighlight = oldRPr.highlight;
+    if (highlightMark) {
+      if (!oldHighlight || highlightMark.attrs.color !== oldHighlight) {
+        positiveOverrides.push(highlightMark);
+      }
+    } else if (oldHighlight) {
+      negativeOverrides.add('highlight');
+    }
+
+    // 7. Check FontSize
+    const fontSizeMark = originalMarks.find(m => m.type.name === 'fontSize');
+    const oldFontSize = oldRPr.fontSize;
+    if (fontSizeMark) {
+      if (!oldFontSize || fontSizeMark.attrs.size !== oldFontSize) {
+        positiveOverrides.push(fontSizeMark);
+      }
+    } else if (oldFontSize) {
+      negativeOverrides.add('fontSize');
+    }
+
+    // 8. Check FontFamily
+    const fontFamilyMark = originalMarks.find(m => m.type.name === 'fontFamily');
+    const oldFontFamily = oldRPr.fontFamily;
+    if (fontFamilyMark) {
+      if (!oldFontFamily) {
+        positiveOverrides.push(fontFamilyMark);
+      } else {
+        const oldAscii = oldFontFamily.ascii;
+        const oldHAnsi = oldFontFamily.hAnsi ?? oldFontFamily.ascii;
+        const oldAsciiTheme = oldFontFamily.asciiTheme;
+
+        const mAttrs = fontFamilyMark.attrs;
+        if (
+          mAttrs.ascii !== oldAscii ||
+          mAttrs.hAnsi !== oldHAnsi ||
+          mAttrs.asciiTheme !== oldAsciiTheme
+        ) {
+          positiveOverrides.push(fontFamilyMark);
+        }
+      }
+    } else if (oldFontFamily) {
+      negativeOverrides.add('fontFamily');
+    }
+
+    // 9. Check Subscript/Superscript (vertAlign)
+    const hasSubscriptMark = originalMarks.some(m => m.type.name === 'subscript');
+    const oldHasSubscript = oldRPr.vertAlign === 'subscript';
+    if (hasSubscriptMark && !oldHasSubscript) {
+      const subMark = originalMarks.find(m => m.type.name === 'subscript');
+      if (subMark) positiveOverrides.push(subMark);
+    } else if (!hasSubscriptMark && oldHasSubscript) {
+      negativeOverrides.add('subscript');
+    }
+
+    const hasSuperscriptMark = originalMarks.some(m => m.type.name === 'superscript');
+    const oldHasSuperscript = oldRPr.vertAlign === 'superscript';
+    if (hasSuperscriptMark && !oldHasSuperscript) {
+      const superMark = originalMarks.find(m => m.type.name === 'superscript');
+      if (superMark) positiveOverrides.push(superMark);
+    } else if (!hasSuperscriptMark && oldHasSuperscript) {
+      negativeOverrides.add('superscript');
+    }
+
+    // 10. Check Spacing (tracking/letterSpacing)
+    const trackingMark = originalMarks.find(m => m.type.name === 'tracking' || m.type.name === 'letterSpacing');
+    const oldSpacing = oldRPr.spacing;
+    if (trackingMark) {
+      if (!oldSpacing || trackingMark.attrs.value !== oldSpacing) {
+        positiveOverrides.push(trackingMark);
+      }
+    } else if (oldSpacing) {
+      negativeOverrides.add(trackingMark?.type.name || 'tracking');
+    }
+
+    // 11. Check Caps (allCaps / smallCaps)
+    const hasAllCapsMark = originalMarks.some(m => m.type.name === 'allCaps');
+    const oldHasAllCaps = !!oldRPr.caps;
+    if (hasAllCapsMark && !oldHasAllCaps) {
+      const capsMark = originalMarks.find(m => m.type.name === 'allCaps');
+      if (capsMark) positiveOverrides.push(capsMark);
+    } else if (!hasAllCapsMark && oldHasAllCaps) {
+      negativeOverrides.add('allCaps');
+    }
+
+    const hasSmallCapsMark = originalMarks.some(m => m.type.name === 'smallCaps');
+    const oldHasSmallCaps = !!oldRPr.smallCaps;
+    if (hasSmallCapsMark && !oldHasSmallCaps) {
+      const smallCapsMark = originalMarks.find(m => m.type.name === 'smallCaps');
+      if (smallCapsMark) positiveOverrides.push(smallCapsMark);
+    } else if (!hasSmallCapsMark && oldHasSmallCaps) {
+      negativeOverrides.add('smallCaps');
     }
   }
 }

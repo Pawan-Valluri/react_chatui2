@@ -182,3 +182,26 @@
   align-items: center !important;
   width: 100% !important;
 }
+
+/* Programmatic Numbering and list overrides */
+.ProseMirror ol, .ProseMirror ul {
+  list-style-type: none !important;
+  padding-left: 1.5em !important;
+}
+.ProseMirror li {
+  list-style-type: none !important;
+  display: flex !important;
+  align-items: flex-start !important;
+}
+.docx-list-marker {
+  display: inline-block;
+  min-width: 1.5em;
+  margin-right: 0.5em;
+  user-select: none;
+  font-weight: bold;
+}
+
+/* Force hanging indent on list paragraphs to override inline styles */
+.ProseMirror p[class*="docx-list-"] {
+  text-indent: -18pt !important;
+}

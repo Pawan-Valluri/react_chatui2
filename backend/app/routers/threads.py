@@ -327,9 +327,23 @@ async def send_message(thread_id: str, payload: MessageCreate, db: Session = Dep
 
 import base64
 import y_py as Y
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from database import Document, DocumentTemplate
 from app.config import DEFAULT_TEMPLATE_ID
+
+@router.get("/templates/{theme_hash}")
+def get_template_by_hash(theme_hash: str, db: Session = Depends(get_db)):
+    template = db.query(DocumentTemplate).filter(DocumentTemplate.theme_hash == theme_hash).first()
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    
+    return Response(
+        content=template.docx_blob,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={
+            "Cache-Control": "public, max-age=31536000, immutable"
+        }
+    )
 
 @router.get("/threads/{thread_id}/document")
 def get_document(thread_id: str, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
@@ -340,28 +354,37 @@ def get_document(thread_id: str, db: Session = Depends(get_db), current_user: di
     
     document = db.query(Document).filter(Document.thread_id == thread_id).first()
     
+    default_template = db.query(DocumentTemplate).filter(DocumentTemplate.id == DEFAULT_TEMPLATE_ID).first()
+    if not default_template:
+        default_template = db.query(DocumentTemplate).first()
+        if not default_template:
+            raise HTTPException(status_code=500, detail="No templates found in the database.")
+            
     if not document:
-        template = db.query(DocumentTemplate).filter(DocumentTemplate.id == DEFAULT_TEMPLATE_ID).first()
-        if not template:
-            template = db.query(DocumentTemplate).first()
-            if not template:
-                raise HTTPException(status_code=500, detail="No templates found in the database.")
-        
         document = Document(
             thread_id=thread_id,
-            template_id=template.id,
+            template_id=default_template.id,
+            theme_hash=default_template.theme_hash,
             latest_snapshot=None
         )
         db.add(document)
         db.commit()
         db.refresh(document)
         
-    template = db.query(DocumentTemplate).filter(DocumentTemplate.id == document.template_id).first()
-    if not template:
-        raise HTTPException(status_code=500, detail="Document template not found.")
+    active_hash = document.theme_hash or default_template.theme_hash
+    active_template = db.query(DocumentTemplate).filter(DocumentTemplate.theme_hash == active_hash).first()
+    if not active_template:
+        active_template = default_template
+
+    try:
+        num_dict = json.loads(active_template.numbering_json) if active_template.numbering_json else {}
+    except Exception:
+        num_dict = {}
         
     return JSONResponse(content={
-        "docx_blob": base64.b64encode(template.docx_blob).decode('utf-8'),
+        "default_theme_hash": default_template.theme_hash,
+        "theme_hash": document.theme_hash or default_template.theme_hash,
+        "numbering_json": num_dict,
         "latest_snapshot": base64.b64encode(document.latest_snapshot).decode('utf-8') if document.latest_snapshot else None
     })
 
@@ -387,9 +410,27 @@ async def put_document(thread_id: str, request: Request, db: Session = Depends(g
             Y.apply_update(ydoc, document.latest_snapshot)
             Y.apply_update(ydoc, delta)
             document.latest_snapshot = Y.encode_state_as_update(ydoc)
+            
+            # Extract themeHash from Yjs metadata
+            try:
+                metadata_map = ydoc.get_map('metadata')
+                theme_hash = metadata_map.get('themeHash')
+                if theme_hash:
+                    document.theme_hash = theme_hash
+            except Exception as e:
+                print("Failed to extract themeHash from snapshot in put_document:", e)
         else:
             # No snapshot yet, the delta becomes the snapshot
             document.latest_snapshot = delta
+            try:
+                ydoc = Y.YDoc()
+                Y.apply_update(ydoc, delta)
+                metadata_map = ydoc.get_map('metadata')
+                theme_hash = metadata_map.get('themeHash')
+                if theme_hash:
+                    document.theme_hash = theme_hash
+            except Exception as e:
+                print("Failed to extract themeHash from delta in put_document:", e)
             
         db.commit()
         return {"status": "success", "message": "Document updated successfully"}
@@ -457,8 +498,24 @@ async def commit_turn(thread_id: str, request: Request, db: Session = Depends(ge
             Y.apply_update(ydoc, document.latest_snapshot)
             Y.apply_update(ydoc, delta)
             document.latest_snapshot = Y.encode_state_as_update(ydoc)
+            try:
+                metadata_map = ydoc.get_map('metadata')
+                theme_hash = metadata_map.get('themeHash')
+                if theme_hash:
+                    document.theme_hash = theme_hash
+            except Exception as e:
+                print("Failed to extract themeHash from snapshot in commit_turn:", e)
         else:
             document.latest_snapshot = delta
+            try:
+                ydoc = Y.YDoc()
+                Y.apply_update(ydoc, delta)
+                metadata_map = ydoc.get_map('metadata')
+                theme_hash = metadata_map.get('themeHash')
+                if theme_hash:
+                    document.theme_hash = theme_hash
+            except Exception as e:
+                print("Failed to extract themeHash from delta in commit_turn:", e)
             
     db.commit()
     return {"status": "success"}

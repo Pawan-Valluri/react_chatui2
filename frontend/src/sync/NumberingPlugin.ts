@@ -2,68 +2,6 @@ import { Plugin } from 'prosemirror-state';
 import { Decoration, DecorationSet } from 'prosemirror-view';
 import { Node as PMNode } from 'prosemirror-model';
 
-export function getNumberString(value: number, format: string): string {
-  if (format === 'lowerLetter') {
-    return String.fromCharCode(96 + value); // 1 -> 'a'
-  }
-  if (format === 'upperLetter') {
-    return String.fromCharCode(64 + value); // 1 -> 'A'
-  }
-  if (format === 'lowerRom') {
-    return toRoman(value).toLowerCase();
-  }
-  if (format === 'upperRom') {
-    return toRoman(value);
-  }
-  return value.toString();
-}
-
-export function toRoman(num: number): string {
-  const lookup: [string, number][] = [
-    ['M', 1000], ['CM', 900], ['D', 500], ['CD', 400],
-    ['C', 100], ['XC', 90], ['L', 50], ['XL', 40],
-    ['X', 10], ['IX', 9], ['V', 5], ['IV', 4], ['I', 1]
-  ];
-  let roman = '';
-  let temp = num;
-  for (const [letter, value] of lookup) {
-    while (temp >= value) {
-      roman += letter;
-      temp -= value;
-    }
-  }
-  return roman;
-}
-
-export function formatLevelText(lvlText: string, levelValues: string[]): string {
-  let result = lvlText;
-  for (let i = 0; i < levelValues.length; i++) {
-    result = result.replace(`%${i + 1}`, levelValues[i]);
-  }
-  return result;
-}
-
-export function cleanMarkerText(text: string, isBullet: boolean, ilvl: number): string {
-  let cleaned = text;
-  
-  // Replace Wingdings/Symbol private use area characters with standard bullets
-  cleaned = cleaned.replace(/[\uF000-\uF0FF]/g, (char) => {
-    if (char === '\uF0B7' || char === '\uF02D' || char === '\uF0A7') {
-      if (ilvl === 0) return '•';
-      if (ilvl === 1) return '◦';
-      return '▪';
-    }
-    return '•';
-  });
-
-  if (isBullet && (cleaned === '' || cleaned === 'o' || cleaned === '' || cleaned === '')) {
-    if (ilvl === 0) return '•';
-    if (ilvl === 1) return '◦';
-    return '▪';
-  }
-
-  return cleaned;
-}
 
 function computeDecos(doc: PMNode): DecorationSet {
   const decos: Decoration[] = [];

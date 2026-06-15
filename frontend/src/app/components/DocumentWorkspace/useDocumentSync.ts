@@ -135,10 +135,10 @@ export function useDocumentSync({
       
       // 4. READY
       setGuardState("READY");
-    } catch (err: any) {
+    } catch (err) {
       console.error("fetchDocument guard sequence failed:", err);
       setGuardState("ERROR");
-      setError(err.message || "Failed to load document");
+      setError((err as any).message || "Failed to load document");
     } finally {
       if (showLoading) {
         setLoading(false);
@@ -180,7 +180,7 @@ export function useDocumentSync({
       setTimeout(() => {
         setSavingStatus((prev) => (prev === "saved" ? "idle" : prev));
       }, 3000);
-    } catch (err: any) {
+    } catch (err) {
       console.error("Save error:", err);
       setSavingStatus("idle");
     }
@@ -319,9 +319,9 @@ export function useDocumentSync({
               try {
                 bridge.executeToolCall(tc.name, tc.args);
                 results.push({ tool_call_id: tc.id, output: "Success" });
-              } catch (err: any) {
+              } catch (err) {
                 console.error(`Tool execution failed for ${tc.name}:`, err);
-                results.push({ tool_call_id: tc.id, output: `Error: ${err.message}` });
+                results.push({ tool_call_id: tc.id, output: `Error: ${(err as any).message}` });
               }
             }
             

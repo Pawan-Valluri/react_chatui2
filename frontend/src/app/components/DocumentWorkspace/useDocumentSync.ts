@@ -31,7 +31,6 @@ const seedYDocIfEmpty = (yDoc: Y.Doc | null, editorRef: React.RefObject<any>) =>
       yDoc.transact(() => {
         prosemirrorToYXmlFragment(view.state.doc, xmlFragment);
       });
-      console.log("Seeded empty YDoc with initial ProseMirror document");
     }
   }
 };
@@ -108,7 +107,6 @@ export function useDocumentSync({
           throw new Error("No default theme hash provided by backend");
         }
         // Bootstrap Fallback
-        console.log("Bootstrap Fallback: setting themeHash in Yjs metadata:", defaultHash);
         currentYDoc.transact(() => {
           metadataMap.set("themeHash", defaultHash);
         });
@@ -120,7 +118,6 @@ export function useDocumentSync({
       let cachedBuffer = await TemplateCache.get(themeHash!);
       
       if (!cachedBuffer) {
-        console.log(`Cache miss for themeHash ${themeHash!}, fetching template from backend...`);
         const templateRes = await fetch(`/api/templates/${themeHash!}`);
         if (!templateRes.ok) {
           throw new Error(`Failed to fetch template binary for hash ${themeHash!}`);
@@ -128,9 +125,7 @@ export function useDocumentSync({
         const templateBlob = await templateRes.blob();
         cachedBuffer = await templateBlob.arrayBuffer();
         await TemplateCache.set(themeHash!, cachedBuffer);
-        console.log(`Cached template binary for themeHash ${themeHash!}`);
       } else {
-        console.log(`Cache hit for themeHash ${themeHash!}`);
       }
       
       setDocumentBuffer(cachedBuffer);
@@ -297,7 +292,6 @@ export function useDocumentSync({
   useEffect(() => {
     const handleExecuteFrontendTool = (e: any) => {
       const toolCalls = e.detail.tool_calls;
-      console.log("Interrupt Payload Received: Executing frontend tools", toolCalls);
       
       const results: any[] = [];
       
@@ -376,12 +370,9 @@ export function useDocumentSync({
           
           if (res.ok) {
               localSnapshotRef.current = Y.encodeStateVector(yDocRef.current);
-              console.log("Atomic commit successful");
           } else {
-              console.error("Failed to explicit commit:", res.statusText);
           }
       } catch(err) {
-          console.error("Failed to explicit commit:", err);
       }
     };
 

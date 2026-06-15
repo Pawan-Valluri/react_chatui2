@@ -830,7 +830,6 @@ export const CustomChat: React.FC<CustomChatProps> = ({
                   };
                   // Reactive check: if edit_document completed, notify parent instantly
                   if (toolCallInfo.toolName === "edit_document" && onDocumentUpdated) {
-                    console.log("edit_document tool call completed. Notifying document reload.");
                     onDocumentUpdated();
                   }
                 }

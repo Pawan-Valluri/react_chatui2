@@ -26,7 +26,6 @@ export class DocumentPool {
       const oldestId = this.order.shift();
       if (oldestId) {
         this.docs.delete(oldestId);
-        console.log(`Evicted document ${oldestId} from pool.`);
       }
     }
 

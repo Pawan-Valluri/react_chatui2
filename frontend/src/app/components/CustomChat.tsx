@@ -706,10 +706,9 @@ export const CustomChat: React.FC<CustomChatProps> = ({
                     assistantParts: latestAssistantParts
                 }
             }));
-            // Stream completed, notify parent to fetch document in case tool finished
-            setTimeout(() => {
-              if (onDocumentUpdated) onDocumentUpdated();
-            }, 200);
+            // Stream completed
+            // (Skipping onDocumentUpdated to prevent disruptive full-page refresh, 
+            // since frontend now handles tool execution via EditorBridge)
             break;
           }
 
@@ -828,10 +827,8 @@ export const CustomChat: React.FC<CustomChatProps> = ({
                     result: tr.result,
                     status: "complete"
                   };
-                  // Reactive check: if edit_document completed, notify parent instantly
-                  if (toolCallInfo.toolName === "edit_document" && onDocumentUpdated) {
-                    onDocumentUpdated();
-                  }
+                  // Reactive check: edit_document completed.
+                  // (Skipping onDocumentUpdated since frontend handles tool execution locally)
                 }
               }
 

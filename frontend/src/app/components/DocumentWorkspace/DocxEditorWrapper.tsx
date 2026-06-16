@@ -1,8 +1,11 @@
 import React from "react";
 import { DocxEditor } from "@eigenpal/docx-editor-react";
+import { setGoogleFontsEnabled } from "@eigenpal/docx-editor-core";
 import { SyncEngine } from "./sync/SyncEngine";
 import * as Y from "yjs";
 import "@eigenpal/docx-editor-react/styles.css";
+
+setGoogleFontsEnabled(false);
 
 interface DocxEditorWrapperProps {
   editorRef: React.RefObject<any>;

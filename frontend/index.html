@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://www.aexp-static.com; font-src 'self' https://www.aexp-static.com; img-src 'self' data:; connect-src 'self' ws://localhost:* http://localhost:* ws://127.0.0.1:* http://127.0.0.1:*;" />
     <title>APCOT Chat</title>
     <!-- Try loading DLS core from American Express CDN, fall back to local stylesheet served from public/ if unavailable -->
     <link rel="stylesheet" href="https://www.aexp-static.com/cdaas/dls/packages/@americanexpress/dls/7.15.0/stylesheets/dls-core.min.css" onerror="this.onerror=null;this.href='/dls-core.css';" />

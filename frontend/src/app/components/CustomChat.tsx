@@ -137,6 +137,14 @@ const ThreadMessage = () => {
     return msgs && msgs.length > 0 && msgs[msgs.length - 1]?.id === s?.message?.id;
   });
 
+  const isStepRunning = isRunning && isLast;
+
+  useEffect(() => {
+    if (!isStepRunning) {
+      setMasterOpen(false);
+    }
+  }, [isStepRunning]);
+
   const content = useAuiState((s) => s.message.content) || [];
   const stepParts = content.filter((p: any) => p.type === "reasoning" || p.type === "tool-call");
   

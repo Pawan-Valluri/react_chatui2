@@ -25,12 +25,8 @@
   &.collapsed {
     width: 0px !important;
     border-left: 0px solid transparent !important;
-    overflow: hidden;
+    overflow: visible;
     pointer-events: none;
-
-    * {
-      display: none !important;
-    }
   }
 }
 
@@ -163,14 +159,14 @@
 .workspace-edge-toggle {
   position: absolute;
   top: 50%;
-  transform: translateY(-50%);
+  left: 0;
+  transform: translate(-100%, -50%);
   width: 20px;
   height: 40px;
   border-radius: 4px 0 0 4px;
   background-color: var(--accent-light);
   border: 1px solid var(--accent-light);
   border-right: none;
-  margin-right: -1px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -178,7 +174,8 @@
   z-index: 50;
   color: #fff;
   box-shadow: -2px 0 12px rgba(0, 111, 207, 0.3);
-  transition: right $duration-normal $transition-curve, background-color $duration-fast, box-shadow $duration-fast;
+  pointer-events: auto;
+  transition: background-color $duration-fast, box-shadow $duration-fast;
 
   &:hover {
     background-color: #005bb5;

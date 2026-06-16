@@ -58,11 +58,13 @@ export const Workspace: React.FC<WorkspaceProps> = ({
   }, [isResizing, onWidthChange]);
 
   return (
-    <>
+    <aside
+      className={`apcot-workspace-panel ${isCollapsed ? "collapsed" : ""} ${isResizing ? "resizing" : ""}`}
+      style={{ width: isCollapsed ? 0 : width }}
+    >
       {/* Mid-edge Toggle Button */}
       <button
         className={`workspace-edge-toggle ${isCollapsed ? "collapsed" : ""}`}
-        style={{ right: isCollapsed ? 0 : width }}
         onClick={onToggleCollapse}
         aria-label={isCollapsed ? "Open Workspace" : "Close Workspace"}
         title={isCollapsed ? "Open Workspace" : "Close Workspace"}
@@ -70,11 +72,7 @@ export const Workspace: React.FC<WorkspaceProps> = ({
         {isCollapsed ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
       </button>
 
-      <aside
-        className={`apcot-workspace-panel ${isCollapsed ? "collapsed" : ""} ${isResizing ? "resizing" : ""}`}
-        style={{ width: isCollapsed ? 0 : width }}
-      >
-        {/* Draggable handle for resizing */}
+      {/* Draggable handle for resizing */}
         {!isCollapsed && (
           <div
             ref={resizeRef}
@@ -112,7 +110,6 @@ export const Workspace: React.FC<WorkspaceProps> = ({
           </div>
         )}
       </aside>
-    </>
   );
 };
 export default Workspace;

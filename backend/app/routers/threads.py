@@ -394,6 +394,8 @@ async def put_document(thread_id: str, request: Request, db: Session = Depends(g
         
     try:
         delta = await request.body()
+        with open("backend_debug.log", "a") as f:
+            f.write(f"DEBUG: put_document called for thread {thread_id}, delta length: {len(delta) if delta else 0}\n")
         if not delta:
             return {"status": "success", "message": "No delta provided"}
             
@@ -446,6 +448,8 @@ async def commit_turn(thread_id: str, request: Request, db: Session = Depends(ge
     payload = CommitPayload(**metadata)
 
     delta = await request.body()
+    with open("backend_debug.log", "a") as f:
+        f.write(f"DEBUG: commit_turn called for thread {thread_id}, delta length: {len(delta) if delta else 0}\n")
     
     thread = db.query(Thread).filter(Thread.id == thread_id, Thread.user_id == current_user["user_id"]).first()
     if not thread:

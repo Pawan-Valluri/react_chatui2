@@ -25,12 +25,17 @@ const getEditorView = (editorRef: React.RefObject<any>) => {
 const seedYDocIfEmpty = (yDoc: Y.Doc | null, editorRef: React.RefObject<any>) => {
   if (!yDoc || !editorRef.current) return;
   const xmlFragment = yDoc.getXmlFragment("prosemirror");
-  if (xmlFragment.length === 0) {
+  if ((yDoc as any)._needsSeeding) {
     const view = getEditorView(editorRef);
     if (view) {
       yDoc.transact(() => {
+        if (xmlFragment.length > 0) {
+          xmlFragment.delete(0, xmlFragment.length);
+        }
         prosemirrorToYXmlFragment(view.state.doc, xmlFragment);
       });
+      delete (yDoc as any)._needsSeeding;
+      console.log("Seeded YDoc from editor view. New length:", xmlFragment.length);
     }
   }
 };
@@ -85,13 +90,21 @@ export function useDocumentSync({
       const currentYDoc = DocumentPool.getDoc(threadId);
       yDocRef.current = currentYDoc;
       
+      let isSnapshotEmpty = true;
       if (data.latest_snapshot) {
         const binarySnapStr = atob(data.latest_snapshot);
         const snapBytes = new Uint8Array(binarySnapStr.length);
         for (let i = 0; i < binarySnapStr.length; i++) {
           snapBytes[i] = binarySnapStr.charCodeAt(i);
         }
-        Y.applyUpdate(currentYDoc, snapBytes);
+        if (snapBytes.length > 100) {
+          Y.applyUpdate(currentYDoc, snapBytes);
+          isSnapshotEmpty = false;
+        }
+      }
+      
+      if (isSnapshotEmpty) {
+        (currentYDoc as any)._needsSeeding = true;
       }
       
       localSnapshotRef.current = Y.encodeStateVector(currentYDoc);
@@ -130,6 +143,8 @@ export function useDocumentSync({
       
       setDocumentBuffer(cachedBuffer);
       setYDoc(currentYDoc);
+      console.log("fetchDocument complete. YDoc xmlFragment length:", currentYDoc.getXmlFragment("prosemirror").length);
+      console.log("fetchDocument complete. YDoc xmlFragment content:", currentYDoc.getXmlFragment("prosemirror").toString().substring(0, 300));
       hasUnsavedEditsRef.current = false;
       setError(null);
       
@@ -154,7 +169,7 @@ export function useDocumentSync({
 
     try {
       const delta = Y.encodeStateAsUpdate(yDocRef.current, localSnapshotRef.current);
-      if (delta.length === 0) {
+      if (delta.length <= 2) {
         // No actual changes to save
         return;
       }
@@ -189,6 +204,8 @@ export function useDocumentSync({
   // Handle local changes from editor
   const handleLocalChange = useCallback(() => {
     seedYDocIfEmpty(yDocRef.current, editorRef);
+    console.log("handleLocalChange. YDoc xmlFragment length:", yDocRef.current?.getXmlFragment("prosemirror").length);
+    console.log("handleLocalChange. YDoc xmlFragment content:", yDocRef.current?.getXmlFragment("prosemirror").toString().substring(0, 300));
     hasUnsavedEditsRef.current = true;
     setSavingStatus("idle");
 

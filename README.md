@@ -2,6 +2,12 @@
 
 APCOT Chat is a premium, high-performance, and secure AI chat workspace designed specifically for air-gapped enterprise intranet production environments.
 
+![APCOT Chat Workspace](screenshot_5173.png)
+
+The project features a **dual-pane workspace layout**:
+- **AI Chat Interface (Left)**: A conversational UI built using `@assistant-ui/react` primitives styled with pure Vanilla CSS, displaying real-time stream responses, expandable reasoning thoughts, and agent tool execution states.
+- **Document Workspace (Right)**: An interactive ProseMirror-based document editor (`DocxEditor`) synced via a client-authoritative Yjs CRDT model with SQLite-backed binary delta persistence, allowing real-time edits by both the user and the AI agent.
+
 The project is architected as a **fully self-contained, embeddable React client component tree** integrated with a **FastAPI backend API**, utilizing a **LangGraph state machine** for reasoning/tool traces, and guarded by a robust local **AuthBlue SSO Simulator** for complete user session isolation.
 
 ---
@@ -112,4 +118,5 @@ npm run dev
 2. The frontend will detect a missing session and redirect you to the **AuthBlue Simulator** login page.
 3. Choose one of the quick-login corporate profiles or enter a custom ADs ID.
 4. You will be authenticated, redirected back to the chat client, and see your profile active in the sidebar footer.
-5. Send messages to view real-time expandable thought traces and tool executions streaming directly from the LangGraph backend!
+5. Send messages (e.g. `add table:Heading Table`) to view real-time expandable thought traces and client-side tool executions that dynamically modify the Document Workspace document.
+6. Verify that document changes are automatically saved and persist across page reloads.

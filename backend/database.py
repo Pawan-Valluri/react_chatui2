@@ -94,6 +94,27 @@ class Message(Base):
             "created_at": self.created_at.isoformat() if self.created_at else None
         }
 
+class Attachment(Base):
+    __tablename__ = "attachments"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    thread_id = Column(String, ForeignKey("threads.id", ondelete="CASCADE"), nullable=False)
+    filename = Column(String, nullable=False)
+    markdown_content = Column(Text, nullable=False)
+    skeleton = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    thread = relationship("Thread", backref="attachments")
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "thread_id": self.thread_id,
+            "filename": self.filename,
+            "skeleton": self.skeleton,
+            "created_at": self.created_at.isoformat() if self.created_at else None
+        }
+
 # Dependency to get db session
 def get_db():
     db = SessionLocal()
@@ -215,5 +236,29 @@ def init_db():
             if updated:
                 session.commit()
                 print("Updated template metadata (theme_hash, numbering_json).")
+
+        # Create FTS5 virtual table for attachments if it doesn't exist
+        with engine.begin() as conn:
+            conn.execute(text("""
+                CREATE VIRTUAL TABLE IF NOT EXISTS attachments_fts USING fts5(
+                    id UNINDEXED,
+                    thread_id UNINDEXED,
+                    filename,
+                    markdown_content,
+                    skeleton,
+                    content="attachments",
+                    content_rowid="rowid"
+                )
+            """))
+            # Sync existing attachments if needed (simplistic sync)
+            conn.execute(text("""
+                INSERT INTO attachments_fts(attachments_fts, rowid, id, thread_id, filename, markdown_content, skeleton)
+                SELECT 'delete', rowid, id, thread_id, filename, markdown_content, skeleton FROM attachments;
+            """))
+            conn.execute(text("""
+                INSERT INTO attachments_fts(rowid, id, thread_id, filename, markdown_content, skeleton)
+                SELECT rowid, id, thread_id, filename, markdown_content, skeleton FROM attachments;
+            """))
+            print("Configured FTS5 virtual table for attachments.")
     except Exception as e:
         print("Database migration skipped or error:", e)

@@ -4,11 +4,12 @@ import uuid
 import json
 import asyncio
 from typing import List, Optional, Any
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 
-from database import get_db, Thread, Message
+from database import get_db, Thread, Message, Attachment
 from app.agent import create_agent_graph
 from app.auth import get_current_user
 from app.schemas import MessageCreate, ThreadCreate
@@ -56,6 +57,64 @@ def list_messages(thread_id: str, db: Session = Depends(get_db), current_user: d
     messages = db.query(Message).filter(Message.thread_id == thread_id).order_by(Message.created_at.asc()).all()
     return [m.to_dict() for m in messages]
 
+import os
+import tempfile
+from markitdown import MarkItDown
+
+@router.post("/threads/{thread_id}/attachments")
+async def upload_attachment(thread_id: str, file: UploadFile = File(...), db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    thread = db.query(Thread).filter(Thread.id == thread_id, Thread.user_id == current_user["user_id"]).first()
+    if not thread:
+        raise HTTPException(status_code=404, detail="Thread not found")
+        
+    md = MarkItDown()
+    with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file.filename)[1]) as temp_file:
+        content = await file.read()
+        temp_file.write(content)
+        temp_path = temp_file.name
+        
+    try:
+        result = md.convert(temp_path)
+        markdown_text = result.text_content
+    except Exception as e:
+        os.remove(temp_path)
+        raise HTTPException(status_code=500, detail=f"MarkItDown conversion failed: {str(e)}")
+        
+    os.remove(temp_path)
+    
+    llm = get_polymorphic_llm()
+    prompt = f"Summarize the following markdown document into a 150-200 word summary and a Table of Contents based on its headers:\n\n{markdown_text[:10000]}"
+    try:
+        skeleton_response = llm.invoke(prompt)
+        skeleton = skeleton_response.content if hasattr(skeleton_response, 'content') else str(skeleton_response)
+    except Exception as e:
+        skeleton = "Summary generation failed."
+
+    new_attachment = Attachment(
+        thread_id=thread_id,
+        filename=file.filename,
+        markdown_content=markdown_text,
+        skeleton=skeleton
+    )
+    db.add(new_attachment)
+    db.commit()
+    db.refresh(new_attachment)
+    
+    # Sync with FTS
+    db.execute(text("INSERT INTO attachments_fts(id, thread_id, filename, markdown_content, skeleton) VALUES (:id, :thread_id, :filename, :markdown_content, :skeleton)"),
+               {"id": new_attachment.id, "thread_id": new_attachment.thread_id, "filename": new_attachment.filename, "markdown_content": new_attachment.markdown_content, "skeleton": new_attachment.skeleton})
+    db.commit()
+
+    return new_attachment.to_dict()
+
+@router.get("/threads/{thread_id}/attachments")
+def list_attachments(thread_id: str, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    thread = db.query(Thread).filter(Thread.id == thread_id, Thread.user_id == current_user["user_id"]).first()
+    if not thread:
+        raise HTTPException(status_code=404, detail="Thread not found")
+    attachments = db.query(Attachment).filter(Attachment.thread_id == thread_id).order_by(Attachment.created_at.asc()).all()
+    return [a.to_dict() for a in attachments]
+
 @router.post("/threads/{thread_id}/messages")
 async def send_message(thread_id: str, payload: MessageCreate, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     # 1. Verify thread exists and belongs to user
@@ -90,8 +149,8 @@ async def send_message(thread_id: str, payload: MessageCreate, db: Session = Dep
         if USE_MOCK_LLM:
             try:
                 from app.mock_showcase.mock_tools import think as mock_think, search_kb as mock_search_kb, check_entitlements as mock_check_entitlements
-                from app.agent import insert_paragraph, insert_table, insert_list, apply_style
-                graph_tools = [mock_think, mock_search_kb, mock_check_entitlements, insert_paragraph, insert_table, insert_list, apply_style]
+                from app.agent import insert_paragraph, insert_table, insert_list, apply_style, read_markdown_section, search_document
+                graph_tools = [mock_think, mock_search_kb, mock_check_entitlements, insert_paragraph, insert_table, insert_list, apply_style, read_markdown_section, search_document]
             except Exception as e:
                 print("Failed to load mock_tools:", e)
                 
@@ -113,7 +172,7 @@ async def send_message(thread_id: str, payload: MessageCreate, db: Session = Dep
         ancestors.reverse()
         db_messages = ancestors
         
-        from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
+        from langchain_core.messages import HumanMessage, AIMessage, ToolMessage, SystemMessage
         
         state_messages = []
         for msg in db_messages:
@@ -172,6 +231,46 @@ async def send_message(thread_id: str, payload: MessageCreate, db: Session = Dep
 
         # Append the active new user prompt at the end of the history context
         state_messages.append(HumanMessage(content=payload.content, id=user_message.id))
+
+        # Check for mock command "all attachments"
+        if payload.content.strip().lower() == "all attachments":
+            attachments = db.query(Attachment).filter(Attachment.thread_id == thread_id).order_by(Attachment.created_at.asc()).all()
+            mock_res = f"**All Attachments ({len(attachments)})**\n\n"
+            for att in attachments:
+                mock_res += f"### {att.filename}\n"
+                mock_res += f"- **Length**: {len(att.markdown_content)} characters\n"
+                mock_res += f"- **Preview**: {att.markdown_content[:500]}...\n\n"
+            
+            parts = []
+
+            # Simulated reasoning step
+            parts.append({'type': 'reasoning', 'text': 'Scanning conversation context for uploaded files...'})
+            yield f"event: parts\ndata: {json.dumps(parts)}\n\n"
+            await asyncio.sleep(0.2)
+            
+            # Simulated tool call
+            mock_tool_call_id = f"mock_{uuid.uuid4().hex[:8]}"
+            parts.append({'type': 'tool-call', 'toolCallId': mock_tool_call_id, 'toolName': 'search_document', 'args': {'query': '*'}, 'status': 'running'})
+            yield f"event: parts\ndata: {json.dumps(parts)}\n\n"
+            await asyncio.sleep(0.4)
+            
+            # Simulated tool call completion
+            parts[-1] = {'type': 'tool-call', 'toolCallId': mock_tool_call_id, 'toolName': 'search_document', 'args': {'query': '*'}, 'status': 'complete', 'result': f'Found {len(attachments)} files'}
+            yield f"event: parts\ndata: {json.dumps(parts)}\n\n"
+            await asyncio.sleep(0.2)
+            
+            parts.append({"type": "text", "text": mock_res})
+            yield f"event: parts\ndata: {json.dumps(parts)}\n\n"
+            return
+
+        # Inject attachment context if available
+        attachments = db.query(Attachment).filter(Attachment.thread_id == thread_id).order_by(Attachment.created_at.asc()).all()
+        if attachments:
+            attachment_directives = []
+            for att in attachments:
+                attachment_directives.append(f"The user has uploaded a file: '{att.filename}' (ID: {att.id}). Summary: [{att.skeleton}]. You do NOT have the full text of this document in your context. If the user asks a question related to this file, you MUST use your tools (read_markdown_section or search_document) to navigate the Markdown headers or search the document before answering. Supply the file ID '{att.id}' to the tools.")
+            system_msg = SystemMessage(content="\n\n".join(attachment_directives), id=f"sys_att_{thread_id}")
+            state_messages.insert(0, system_msg)
 
         state = {
             "messages": state_messages,
@@ -542,8 +641,8 @@ async def resume_message(thread_id: str, payload: ResumePayload, db: Session = D
         if USE_MOCK_LLM:
             try:
                 from app.mock_showcase.mock_tools import think as mock_think, search_kb as mock_search_kb, check_entitlements as mock_check_entitlements
-                from app.agent import insert_paragraph, insert_table, insert_list, apply_style
-                graph_tools = [mock_think, mock_search_kb, mock_check_entitlements, insert_paragraph, insert_table, insert_list, apply_style]
+                from app.agent import insert_paragraph, insert_table, insert_list, apply_style, read_markdown_section, search_document
+                graph_tools = [mock_think, mock_search_kb, mock_check_entitlements, insert_paragraph, insert_table, insert_list, apply_style, read_markdown_section, search_document]
             except Exception as e:
                 pass
 

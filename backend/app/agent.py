@@ -45,6 +45,83 @@ async def check_entitlements(resource: str) -> str:
         "Granted full administration, thread deletion, and query permissions."
     )
 
+from sqlalchemy import create_engine, text
+
+@tool
+def read_markdown_section(file_id: str, heading_name: str) -> str:
+    """Reads the specific section of the markdown document under the specified heading.
+    Use this to extract detailed content that you see listed in the document's Table of Contents.
+    Provide the exact heading name.
+    """
+    engine = create_engine("sqlite:///./apcot_chat.db")
+    with engine.connect() as conn:
+        res = conn.execute(text("SELECT markdown_content FROM attachments WHERE id = :id"), {"id": file_id}).fetchone()
+        if not res:
+            return f"Error: Document with ID '{file_id}' not found."
+            
+        content = res[0]
+        lines = content.split('\n')
+        extracting = False
+        section_text = []
+        heading_level = 0
+        
+        target_heading_clean = heading_name.replace('#', '').strip().lower()
+        
+        for line in lines:
+            if line.startswith('#'):
+                current_level = len(line.split(' ')[0])
+                current_heading = line.replace('#', '').strip().lower()
+                
+                if not extracting and current_heading == target_heading_clean:
+                    extracting = True
+                    heading_level = current_level
+                    continue
+                elif extracting and current_level <= heading_level:
+                    break
+                    
+            if extracting:
+                section_text.append(line)
+                
+        if not extracting:
+            return f"Heading '{heading_name}' not found in the document."
+            
+        return "\n".join(section_text)[:2000]
+
+@tool
+def search_document(file_id: str, query: str) -> str:
+    """Executes a keyword search against the specified document. 
+    Returns the most relevant chunks of text from the document.
+    """
+    engine = create_engine("sqlite:///./apcot_chat.db")
+    with engine.connect() as conn:
+        try:
+            # Simple fallback search using LIKE if FTS fails
+            fts_query = f'"{query}"'
+            res = conn.execute(text(
+                "SELECT snippet(attachments_fts, 3, '>>', '<<', '...', 64) as matched_snippet "
+                "FROM attachments_fts "
+                "WHERE attachments_fts MATCH :q AND id = :id "
+                "LIMIT 3"
+            ), {"q": fts_query, "id": file_id}).fetchall()
+            
+            if not res:
+                return f"No results found for query '{query}' in document '{file_id}'."
+                
+            results = [row[0] for row in res]
+            return "Search Results:\n\n" + "\n\n---\n\n".join(results)
+        except Exception:
+            # Fallback to simple substring search if FTS table is having issues
+            res = conn.execute(text("SELECT markdown_content FROM attachments WHERE id = :id"), {"id": file_id}).fetchone()
+            if not res:
+                return f"Error: Document with ID '{file_id}' not found."
+            content = res[0]
+            if query.lower() in content.lower():
+                idx = content.lower().find(query.lower())
+                start = max(0, idx - 100)
+                end = min(len(content), idx + 200)
+                return f"Found match:\n...{content[start:end]}..."
+            return f"No results found for '{query}'"
+
 # ──────────────────────────────────────────────────────────────────────────
 # 🖥️ Client Tool Node (Remote Execution)
 # ──────────────────────────────────────────────────────────────────────────
@@ -107,7 +184,7 @@ def create_agent_graph(llm: BaseChatModel, tools: List[Any] = None, checkpointer
     
     # 1. Default to core native production tools if none are passed
     if tools is None:
-        tools = [think, search_kb, check_entitlements]
+        tools = [think, search_kb, check_entitlements, read_markdown_section, search_document]
         
     llm_with_tools = llm.bind_tools(tools)
 

@@ -296,11 +296,103 @@ const ThreadMessage = () => {
 
 import { LexicalComposerInput } from "@assistant-ui/react-lexical";
 
-const CustomComposer = () => {
+const CustomComposer = ({ threadId }: { threadId: string }) => {
   const isRunning = useAuiState((s) => s.thread.isRunning);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadedFiles, setUploadedFiles] = useState<{filename: string}[]>([]);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+
+  useEffect(() => {
+    fetch(`/api/threads/${threadId}/attachments`)
+      .then(res => res.json())
+      .then(data => {
+         if (Array.isArray(data)) setUploadedFiles(data);
+      })
+      .catch(err => console.error(err));
+  }, [threadId]);
+
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsUploading(true);
+    const formData = new FormData();
+    formData.append("file", file);
+    
+    try {
+      const res = await fetch(`/api/threads/${threadId}/attachments`, {
+        method: "POST",
+        body: formData,
+      });
+      if (res.ok) {
+        const newAtt = await res.json();
+        setUploadedFiles(prev => [...prev, newAtt]);
+      } else {
+        alert("Upload failed.");
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
 
   return (
     <div className="apcot-composer-container">
+      {uploadedFiles.length > 0 && (
+        <div style={{ position: "relative", marginBottom: "12px", marginLeft: "12px", zIndex: 50, pointerEvents: "auto" }}>
+          <button 
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setIsDropdownOpen(prev => !prev);
+            }}
+            style={{
+              display: "flex", alignItems: "center", gap: "8px",
+              padding: "6px 14px", fontSize: "0.8rem", fontWeight: 500,
+              background: isDropdownOpen ? "rgba(255, 255, 255, 0.08)" : "rgba(255, 255, 255, 0.03)",
+              border: "1px solid rgba(255, 255, 255, 0.08)",
+              borderRadius: "16px", color: "var(--text-secondary)",
+              cursor: "pointer", transition: "all 0.2s ease"
+            }}
+          >
+            <PaperclipIcon width={14} height={14} />
+            {uploadedFiles.length} Attachment{uploadedFiles.length !== 1 ? 's' : ''}
+            <ChevronDownIcon width={14} height={14} style={{ transform: isDropdownOpen ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s ease", opacity: 0.7 }} />
+          </button>
+          
+          {isDropdownOpen && (
+            <div style={{
+              position: "absolute", bottom: "100%", left: 0, marginBottom: "8px",
+              background: "rgba(20, 20, 20, 0.75)", backdropFilter: "blur(24px) saturate(180%)",
+              WebkitBackdropFilter: "blur(24px) saturate(180%)",
+              border: "1px solid rgba(255, 255, 255, 0.12)",
+              borderRadius: "12px", padding: "8px",
+              boxShadow: "0 8px 32px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.05)",
+              display: "flex", flexDirection: "column", gap: "4px",
+              minWidth: "220px", maxWidth: "300px", zIndex: 10
+            }}>
+              <div style={{ padding: "6px 8px 4px", fontSize: "0.65rem", textTransform: "uppercase", letterSpacing: "0.8px", color: "var(--text-muted)", fontWeight: 600 }}>
+                Context Files
+              </div>
+              {uploadedFiles.map((f, i) => (
+                <div key={i} style={{
+                  fontSize: "0.8rem", padding: "8px 10px",
+                  background: "rgba(255, 255, 255, 0.03)", borderRadius: "8px",
+                  color: "var(--text-primary)", display: "flex", alignItems: "center", gap: "8px",
+                  whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                  border: "1px solid rgba(255, 255, 255, 0.02)"
+                }}>
+                  <PaperclipIcon width={14} height={14} style={{ flexShrink: 0, color: "var(--accent-light)" }} />
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{f.filename}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
       <ComposerPrimitive.Root className="apcot-composer-shell">
         <div className="apcot-composer-input-row">
           <LexicalComposerInput
@@ -310,7 +402,22 @@ const CustomComposer = () => {
         </div>
         <div className="apcot-composer-actions">
           <div className="apcot-composer-btn-group">
-            <button type="button" className="apcot-composer-tool-btn"><PaperclipIcon /></button>
+            <input 
+              type="file" 
+              style={{ display: "none" }} 
+              ref={fileInputRef} 
+              onChange={handleUpload}
+            />
+            <button 
+              type="button" 
+              className="apcot-composer-tool-btn" 
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isUploading}
+              style={{ opacity: isUploading ? 0.5 : 1 }}
+              title="Upload file"
+            >
+              <PaperclipIcon />
+            </button>
           </div>
           {!isRunning ? (
             <ComposerPrimitive.Send asChild><button className="apcot-composer-send-btn"><SendIcon /></button></ComposerPrimitive.Send>
@@ -345,7 +452,7 @@ const ThreadWelcome = ({ onSendPrompt, starterPrompts }: any) => {
   );
 };
 
-const ChatViewport = ({ runtime, pendingPrompt, onClearPendingPrompt, starterPrompts }: any) => {
+const ChatViewport = ({ runtime, pendingPrompt, onClearPendingPrompt, starterPrompts, threadId }: any) => {
   const isEmpty = useAuiState((s) => s.thread.isEmpty);
 
   useEffect(() => {
@@ -369,7 +476,7 @@ const ChatViewport = ({ runtime, pendingPrompt, onClearPendingPrompt, starterPro
             </div>
           )}
         </ThreadPrimitive.Viewport>
-        <CustomComposer />
+        <CustomComposer threadId={threadId} />
       </ThreadPrimitive.Root>
     </div>
   );
@@ -417,6 +524,7 @@ export const CustomChat: React.FC<CustomChatProps> = ({
         pendingPrompt={pendingPrompt}
         onClearPendingPrompt={onClearPendingPrompt}
         starterPrompts={starterPrompts}
+        threadId={threadId}
       />
     </AssistantRuntimeProvider>
   );

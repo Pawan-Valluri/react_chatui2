@@ -39,7 +39,6 @@ export const createChatModelAdapter = (threadId: string, onThreadUpdated?: () =>
       throw new Error("Failed to send message to APCOT Chat API");
     }
 
-    if (onThreadUpdated) onThreadUpdated();
 
     let reader = response.body?.getReader();
     if (!reader) return;
@@ -64,6 +63,8 @@ export const createChatModelAdapter = (threadId: string, onThreadUpdated?: () =>
               assistantParts: latestAssistantParts
             }
           }));
+          // Refresh threads list after commit so the new title is reflected immediately
+          if (onThreadUpdated) setTimeout(() => onThreadUpdated!(), 600);
           break;
         }
 

@@ -198,7 +198,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <div className="apcot-search-bar" onClick={(e) => e.stopPropagation()}>
             <SearchIcon />
             <input 
-              id="sidebar-search-conversations"
+              id="apcot-search-input"
               name="searchQuery"
               type="text" 
               placeholder="Search conversations..."

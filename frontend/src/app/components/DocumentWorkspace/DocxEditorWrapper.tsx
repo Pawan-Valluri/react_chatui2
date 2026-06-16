@@ -5,7 +5,31 @@ import { SyncEngine } from "./sync/SyncEngine";
 import * as Y from "yjs";
 import "@eigenpal/docx-editor-react/styles.css";
 
+// Disable automatic Google Fonts lookups to prevent external connections
 setGoogleFontsEnabled(false);
+
+const CUSTOM_FONTS = [
+  { family: "Aptos", src: "/fonts/Aptos.ttf" },
+  { family: "Aptos", src: "/fonts/Aptos Bold.ttf", weight: 700 },
+  { family: "Aptos", src: "/fonts/Aptos Italic.ttf" },
+  { family: "Aptos", src: "/fonts/Aptos Bold Italic.ttf", weight: 700 },
+  { family: "Aptos Display", src: "/fonts/Aptos Display.ttf" },
+  { family: "Aptos Display", src: "/fonts/Aptos Display Bold.ttf", weight: 700 },
+  { family: "Aptos Display", src: "/fonts/Aptos Display Italic.ttf" },
+  { family: "Aptos Display", src: "/fonts/Aptos Display Bold Italic.ttf", weight: 700 },
+];
+
+const CUSTOM_FONT_FAMILIES = [
+  "Aptos",
+  "Aptos Display",
+  "Arial",
+  "Calibri",
+  "Cambria",
+  "Georgia",
+  "Times New Roman",
+  "Trebuchet MS",
+  "Verdana"
+];
 
 interface DocxEditorWrapperProps {
   editorRef: React.RefObject<any>;
@@ -57,6 +81,8 @@ const DocxEditorWrapperComponent: React.FC<DocxEditorWrapperProps> = ({
         // @ts-ignore
         treatDocumentAsSchemaSeed={true}
         externalPlugins={plugins}
+        fonts={CUSTOM_FONTS}
+        fontFamilies={CUSTOM_FONT_FAMILIES}
       />
     </div>
   );

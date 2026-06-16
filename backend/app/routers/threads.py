@@ -319,7 +319,7 @@ async def send_message(thread_id: str, payload: MessageCreate, db: Session = Dep
     return StreamingResponse(sse_generator(), media_type="text/event-stream")
 
 import base64
-import y_py as Y
+import pycrdt
 from fastapi.responses import JSONResponse, Response
 from database import Document, DocumentTemplate
 from app.config import DEFAULT_TEMPLATE_ID
@@ -401,15 +401,15 @@ async def put_document(thread_id: str, request: Request, db: Session = Depends(g
             
         if document.latest_snapshot:
             # Apply delta to existing snapshot
-            ydoc = Y.YDoc()
-            Y.apply_update(ydoc, document.latest_snapshot)
-            Y.apply_update(ydoc, delta)
-            document.latest_snapshot = Y.encode_state_as_update(ydoc)
+            ydoc = pycrdt.Doc()
+            ydoc.apply_update(document.latest_snapshot)
+            ydoc.apply_update(delta)
+            document.latest_snapshot = ydoc.get_update()
             
             # Extract themeHash from Yjs metadata
             try:
-                metadata_map = ydoc.get_map('metadata')
-                theme_hash = metadata_map.get('themeHash')
+                metadata_map = ydoc.get("metadata", type=pycrdt.Map)
+                theme_hash = metadata_map.get("themeHash")
                 if theme_hash:
                     document.theme_hash = theme_hash
             except Exception as e:
@@ -418,10 +418,10 @@ async def put_document(thread_id: str, request: Request, db: Session = Depends(g
             # No snapshot yet, the delta becomes the snapshot
             document.latest_snapshot = delta
             try:
-                ydoc = Y.YDoc()
-                Y.apply_update(ydoc, delta)
-                metadata_map = ydoc.get_map('metadata')
-                theme_hash = metadata_map.get('themeHash')
+                ydoc = pycrdt.Doc()
+                ydoc.apply_update(delta)
+                metadata_map = ydoc.get("metadata", type=pycrdt.Map)
+                theme_hash = metadata_map.get("themeHash")
                 if theme_hash:
                     document.theme_hash = theme_hash
             except Exception as e:
@@ -491,13 +491,13 @@ async def commit_turn(thread_id: str, request: Request, db: Session = Depends(ge
     # 3. Apply delta to document.latest_snapshot
     if delta:
         if document.latest_snapshot:
-            ydoc = Y.YDoc()
-            Y.apply_update(ydoc, document.latest_snapshot)
-            Y.apply_update(ydoc, delta)
-            document.latest_snapshot = Y.encode_state_as_update(ydoc)
+            ydoc = pycrdt.Doc()
+            ydoc.apply_update(document.latest_snapshot)
+            ydoc.apply_update(delta)
+            document.latest_snapshot = ydoc.get_update()
             try:
-                metadata_map = ydoc.get_map('metadata')
-                theme_hash = metadata_map.get('themeHash')
+                metadata_map = ydoc.get("metadata", type=pycrdt.Map)
+                theme_hash = metadata_map.get("themeHash")
                 if theme_hash:
                     document.theme_hash = theme_hash
             except Exception as e:
@@ -505,10 +505,10 @@ async def commit_turn(thread_id: str, request: Request, db: Session = Depends(ge
         else:
             document.latest_snapshot = delta
             try:
-                ydoc = Y.YDoc()
-                Y.apply_update(ydoc, delta)
-                metadata_map = ydoc.get_map('metadata')
-                theme_hash = metadata_map.get('themeHash')
+                ydoc = pycrdt.Doc()
+                ydoc.apply_update(delta)
+                metadata_map = ydoc.get("metadata", type=pycrdt.Map)
+                theme_hash = metadata_map.get("themeHash")
                 if theme_hash:
                     document.theme_hash = theme_hash
             except Exception as e:

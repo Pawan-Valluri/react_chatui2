@@ -11,15 +11,15 @@ export class DocumentPool {
   private static order: string[] = [];
 
   /**
-   * Retrieves an existing Y.Doc for a document_id or creates a new one.
+   * Retrieves an existing Y.Doc for a messageId or creates a new one.
    * Enforces LRU eviction if MAX_DOCS is exceeded.
    */
-  static getDoc(documentId: string): Y.Doc {
-    if (this.docs.has(documentId)) {
+  static getDoc(messageId: string): Y.Doc {
+    if (this.docs.has(messageId)) {
       // Move to end of order (most recently used)
-      this.order = this.order.filter(id => id !== documentId);
-      this.order.push(documentId);
-      return this.docs.get(documentId)!;
+      this.order = this.order.filter(id => id !== messageId);
+      this.order.push(messageId);
+      return this.docs.get(messageId)!;
     }
 
     if (this.docs.size >= this.MAX_DOCS) {
@@ -30,15 +30,27 @@ export class DocumentPool {
     }
 
     const doc = new Y.Doc();
-    this.docs.set(documentId, doc);
-    this.order.push(documentId);
+    this.docs.set(messageId, doc);
+    this.order.push(messageId);
     return doc;
+  }
+
+  /**
+   * Aliases an existing document to a new messageId for linear continuations.
+   */
+  static aliasDoc(oldId: string, newId: string) {
+    if (this.docs.has(oldId)) {
+      const doc = this.docs.get(oldId)!;
+      this.docs.set(newId, doc);
+      this.order = this.order.filter(id => id !== oldId && id !== newId);
+      this.order.push(newId);
+    }
   }
 
   /**
    * Optional: Clear a specific document from the pool
    */
-  static clearDoc(documentId: string) {
-    this.docs.delete(documentId);
+  static clearDoc(messageId: string) {
+    this.docs.delete(messageId);
   }
 }

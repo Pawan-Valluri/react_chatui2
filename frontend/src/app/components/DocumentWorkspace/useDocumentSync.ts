@@ -61,6 +61,8 @@ export function useDocumentSync({
   const [savingStatus, setSavingStatus] = useState<SavingStatus>("idle");
   const [error, setError] = useState<string | null>(null);
   const [guardState, setGuardState] = useState<GuardState>("FETCHING_SNAPSHOT");
+  const [activeMessageId, setActiveMessageId] = useState<string | null>(null);
+  const [knownMessageIds, setKnownMessageIds] = useState<string[]>([]);
 
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const localSnapshotRef = useRef<Uint8Array | null>(null);
@@ -68,14 +70,15 @@ export function useDocumentSync({
   const hasUnsavedEditsRef = useRef<boolean>(false);
 
   // Fetch document payload from backend and resolve template cache
-  const fetchDocument = useCallback(async (showLoading = true) => {
+  const fetchDocument = useCallback(async (showLoading = true, msgId?: string) => {
     if (showLoading) {
       setLoading(true);
     }
     setGuardState("FETCHING_SNAPSHOT");
     try {
       // 1. FETCHING_SNAPSHOT
-      const res = await fetch(`/api/threads/${threadId}/document`);
+      const url = msgId ? `/api/threads/${threadId}/document?message_id=${msgId}` : `/api/threads/${threadId}/document`;
+      const res = await fetch(url);
       if (!res.ok) {
         throw new Error(`Failed to load document: ${res.statusText}`);
       }
@@ -87,7 +90,7 @@ export function useDocumentSync({
       
       // 2. HYDRATING_STATE
       setGuardState("HYDRATING_STATE");
-      const currentYDoc = DocumentPool.getDoc(threadId);
+      const currentYDoc = DocumentPool.getDoc(msgId || threadId);
       yDocRef.current = currentYDoc;
       
       let isSnapshotEmpty = true;
@@ -175,7 +178,8 @@ export function useDocumentSync({
       }
       setSavingStatus("saving");
 
-      const res = await fetch(`/api/threads/${threadId}/document`, {
+      const url = activeMessageId ? `/api/threads/${threadId}/document?message_id=${activeMessageId}` : `/api/threads/${threadId}/document`;
+      const res = await fetch(url, {
         method: "PUT",
         headers: {
           "Content-Type": "application/octet-stream",
@@ -220,15 +224,58 @@ export function useDocumentSync({
     }, 5000);
   }, [uploadDocument, editorRef]);
 
-  // Initial fetch on mount, thread change, or documentRevision change
+  // Reset local state when threadId changes
   useEffect(() => {
-    fetchDocument(true);
+    setActiveMessageId(null);
+    setKnownMessageIds([]);
+    hasUnsavedEditsRef.current = false;
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+  }, [threadId]);
 
-    return () => {
-      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
-      hasUnsavedEditsRef.current = false;
+  // Handle external manual document revisions (if applicable)
+  useEffect(() => {
+    if (activeMessageId && activeMessageId !== "EMPTY") {
+      fetchDocument(false, activeMessageId);
+    }
+  }, [documentRevision]);
+
+  // Branch switching event listener
+  useEffect(() => {
+    const handleActiveMessage = (e: any) => {
+      const { threadId: eventThreadId, leafMessageId, messageIds } = e.detail;
+      if (eventThreadId === threadId) {
+        if (!activeMessageId) {
+          setActiveMessageId(leafMessageId);
+          setKnownMessageIds(messageIds);
+          fetchDocument(true, leafMessageId === "EMPTY" ? undefined : leafMessageId);
+          return;
+        }
+
+        if (activeMessageId !== leafMessageId) {
+          const isLinearContinuation = messageIds.includes(activeMessageId);
+
+          if (isLinearContinuation && leafMessageId !== "EMPTY") {
+            DocumentPool.aliasDoc(activeMessageId, leafMessageId);
+            setActiveMessageId(leafMessageId);
+            setKnownMessageIds(messageIds);
+            (window as any)._documentSyncReady = true;
+          } else {
+            (window as any)._documentSyncReady = false;
+            setActiveMessageId(leafMessageId);
+            setKnownMessageIds(messageIds);
+            fetchDocument(true, leafMessageId === "EMPTY" ? undefined : leafMessageId).then(() => {
+              (window as any)._documentSyncReady = true;
+              window.dispatchEvent(new CustomEvent("DocumentSyncReady"));
+            });
+          }
+        }
+      }
     };
-  }, [threadId, fetchDocument, documentRevision]);
+    window.addEventListener("ActiveMessageChanged", handleActiveMessage);
+    return () => {
+      window.removeEventListener("ActiveMessageChanged", handleActiveMessage);
+    };
+  }, [threadId, activeMessageId, fetchDocument]);
 
   // MutationObserver to sync table cell background colors and hide duplicate text-run shading overlays
   useEffect(() => {

@@ -27,6 +27,46 @@ import database
 
 router = APIRouter(prefix="/api")
 
+
+def _reconstruct_snapshot(thread_id: str, start_msg, db, document_latest_snapshot=None) -> bytes:
+    import pycrdt
+    from app.database import Message
+    ancestors = []
+    curr_msg = start_msg
+    while curr_msg:
+        ancestors.append(curr_msg)
+        if curr_msg.checkpoint_snapshot:
+            break
+        if not curr_msg.parent_id:
+            break
+        curr_msg = db.query(Message).filter(Message.id == curr_msg.parent_id, Message.thread_id == thread_id).first()
+
+    ancestors.reverse()
+    ydoc = pycrdt.Doc()
+
+    if not ancestors:
+        if document_latest_snapshot:
+            ydoc.apply_update(document_latest_snapshot)
+        return ydoc.get_update()
+
+    base_msg = ancestors[0]
+    start_idx = 0
+    if base_msg.checkpoint_snapshot:
+        ydoc.apply_update(base_msg.checkpoint_snapshot)
+        start_idx = 1
+    elif document_latest_snapshot:
+        ydoc.apply_update(document_latest_snapshot)
+
+    for msg in ancestors[start_idx:]:
+        if msg.delta_blob:
+            try:
+                ydoc.apply_update(msg.delta_blob)
+            except Exception as e:
+                print(f"Failed to apply delta for msg {msg.id}:", e)
+
+    return ydoc.get_update()
+
+
 @router.get("/threads")
 def list_threads(db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     threads = db.query(Thread).filter(Thread.user_id == current_user["user_id"]).order_by(Thread.created_at.desc()).all()
@@ -438,7 +478,7 @@ def get_template_by_hash(theme_hash: str, db: Session = Depends(get_db)):
     )
 
 @router.get("/threads/{thread_id}/document")
-def get_document(thread_id: str, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+def get_document(thread_id: str, message_id: Optional[str] = None, fallback_parent_id: Optional[str] = None, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     # Verify thread exists and belongs to user
     thread = db.query(Thread).filter(Thread.id == thread_id, Thread.user_id == current_user["user_id"]).first()
     if not thread:
@@ -472,16 +512,31 @@ def get_document(thread_id: str, db: Session = Depends(get_db), current_user: di
         num_dict = json.loads(active_template.numbering_json) if active_template.numbering_json else {}
     except Exception:
         num_dict = {}
-        
+
+    computed_snapshot = document.latest_snapshot
+    
+    # NEW BRANCH-AWARE RECONSTRUCTION LOGIC
+    if message_id:
+        target_msg = db.query(Message).filter(Message.id == message_id, Message.thread_id == thread_id).first()
+        if not target_msg and fallback_parent_id:
+            target_msg = db.query(Message).filter(Message.id == fallback_parent_id, Message.thread_id == thread_id).first()
+        if target_msg:
+            if target_msg.checkpoint_snapshot:
+                computed_snapshot = target_msg.checkpoint_snapshot
+            else:
+                computed_snapshot = _reconstruct_snapshot(thread_id, target_msg, db, document.latest_snapshot)
+                target_msg.checkpoint_snapshot = computed_snapshot
+                db.commit()
+
     return JSONResponse(content={
         "default_theme_hash": default_template.theme_hash,
         "theme_hash": document.theme_hash or default_template.theme_hash,
         "numbering_json": num_dict,
-        "latest_snapshot": base64.b64encode(document.latest_snapshot).decode('utf-8') if document.latest_snapshot else None
+        "latest_snapshot": base64.b64encode(computed_snapshot).decode('utf-8') if computed_snapshot else None
     })
 
 @router.put("/threads/{thread_id}/document")
-async def put_document(thread_id: str, request: Request, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+async def put_document(thread_id: str, request: Request, message_id: Optional[str] = None, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     # Verify thread exists and belongs to user
     thread = db.query(Thread).filter(Thread.id == thread_id, Thread.user_id == current_user["user_id"]).first()
     if not thread:
@@ -498,33 +553,38 @@ async def put_document(thread_id: str, request: Request, db: Session = Depends(g
         if not delta:
             return {"status": "success", "message": "No delta provided"}
             
-        if document.latest_snapshot:
-            # Apply delta to existing snapshot
-            ydoc = pycrdt.Doc()
-            ydoc.apply_update(document.latest_snapshot)
-            ydoc.apply_update(delta)
-            document.latest_snapshot = ydoc.get_update()
-            
-            # Extract themeHash from Yjs metadata
-            try:
-                metadata_map = ydoc.get("metadata", type=pycrdt.Map)
-                theme_hash = metadata_map.get("themeHash")
-                if theme_hash:
-                    document.theme_hash = theme_hash
-            except Exception as e:
-                print("Failed to extract themeHash from snapshot in put_document:", e)
-        else:
-            # No snapshot yet, the delta becomes the snapshot
-            document.latest_snapshot = delta
-            try:
-                ydoc = pycrdt.Doc()
+        target_msg = None
+        if message_id:
+            target_msg = db.query(Message).filter(Message.id == message_id, Message.thread_id == thread_id).first()
+        if not target_msg and fallback_parent_id:
+            target_msg = db.query(Message).filter(Message.id == fallback_parent_id, Message.thread_id == thread_id).first()
+
+        ydoc = pycrdt.Doc()
+        
+        # Apply to target message's checkpoint if specified
+        if target_msg:
+            if target_msg.checkpoint_snapshot:
+                ydoc.apply_update(target_msg.checkpoint_snapshot)
                 ydoc.apply_update(delta)
-                metadata_map = ydoc.get("metadata", type=pycrdt.Map)
-                theme_hash = metadata_map.get("themeHash")
-                if theme_hash:
-                    document.theme_hash = theme_hash
-            except Exception as e:
-                print("Failed to extract themeHash from delta in put_document:", e)
+                target_msg.checkpoint_snapshot = ydoc.get_update()
+            else:
+                ydoc.apply_update(delta)
+                target_msg.checkpoint_snapshot = ydoc.get_update()
+
+        # Update global legacy snapshot as a fallback / main doc
+        ydoc_global = pycrdt.Doc()
+        if document.latest_snapshot:
+            ydoc_global.apply_update(document.latest_snapshot)
+        ydoc_global.apply_update(delta)
+        document.latest_snapshot = ydoc_global.get_update()
+        
+        try:
+            metadata_map = ydoc_global.get("metadata", type=pycrdt.Map)
+            theme_hash = metadata_map.get("themeHash")
+            if theme_hash:
+                document.theme_hash = theme_hash
+        except Exception as e:
+            print("Failed to extract themeHash from delta in put_document:", e)
             
         db.commit()
         return {"status": "success", "message": "Document updated successfully"}
@@ -565,53 +625,59 @@ async def commit_turn(thread_id: str, request: Request, db: Session = Depends(ge
             title_str += "..."
         thread.title = title_str
 
-    # 1. Save user message
+    # 1. Fetch parent message if exists to inherit checkpoint_snapshot
+    parent_msg = None
+    if payload.parent_id:
+        parent_msg = db.query(Message).filter(Message.id == payload.parent_id, Message.thread_id == thread_id).first()
+
+    # 2. Compute user_message's checkpoint
+    user_checkpoint = None
+    if parent_msg:
+        user_checkpoint = _reconstruct_snapshot(thread_id, parent_msg, db, document.latest_snapshot)
+    elif document.latest_snapshot:
+        user_checkpoint = document.latest_snapshot
+
+    # 3. Save user message
     user_msg_content = [{"type": "text", "text": payload.user_content}]
     user_message = Message(
         id=payload.user_message_id,
         thread_id=thread_id,
         parent_id=payload.parent_id,
         role="user",
-        content=json.dumps(user_msg_content)
+        content=json.dumps(user_msg_content),
+        checkpoint_snapshot=user_checkpoint
     )
     db.add(user_message)
     
-    # 2. Save assistant message and delta_blob
+    # 4. Save assistant message
+    assistant_checkpoint = user_checkpoint
+    if delta:
+        ydoc = pycrdt.Doc()
+        if user_checkpoint:
+            ydoc.apply_update(user_checkpoint)
+        ydoc.apply_update(delta)
+        assistant_checkpoint = ydoc.get_update()
+
+        # Global document update (legacy tracking)
+        document.latest_snapshot = assistant_checkpoint
+        try:
+            metadata_map = ydoc.get("metadata", type=pycrdt.Map)
+            theme_hash = metadata_map.get("themeHash")
+            if theme_hash:
+                document.theme_hash = theme_hash
+        except Exception as e:
+            print("Failed to extract themeHash from delta in commit_turn:", e)
+
     assistant_message = Message(
         id=payload.assistant_message_id,
         thread_id=thread_id,
         parent_id=payload.user_message_id,
         role="assistant",
         content=json.dumps(payload.assistant_parts),
-        delta_blob=delta if delta else None
+        delta_blob=delta if delta else None,
+        checkpoint_snapshot=assistant_checkpoint
     )
     db.add(assistant_message)
-    
-    # 3. Apply delta to document.latest_snapshot
-    if delta:
-        if document.latest_snapshot:
-            ydoc = pycrdt.Doc()
-            ydoc.apply_update(document.latest_snapshot)
-            ydoc.apply_update(delta)
-            document.latest_snapshot = ydoc.get_update()
-            try:
-                metadata_map = ydoc.get("metadata", type=pycrdt.Map)
-                theme_hash = metadata_map.get("themeHash")
-                if theme_hash:
-                    document.theme_hash = theme_hash
-            except Exception as e:
-                print("Failed to extract themeHash from snapshot in commit_turn:", e)
-        else:
-            document.latest_snapshot = delta
-            try:
-                ydoc = pycrdt.Doc()
-                ydoc.apply_update(delta)
-                metadata_map = ydoc.get("metadata", type=pycrdt.Map)
-                theme_hash = metadata_map.get("themeHash")
-                if theme_hash:
-                    document.theme_hash = theme_hash
-            except Exception as e:
-                print("Failed to extract themeHash from delta in commit_turn:", e)
             
     db.commit()
     return {"status": "success"}

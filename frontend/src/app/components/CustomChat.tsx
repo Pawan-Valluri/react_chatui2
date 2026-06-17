@@ -482,6 +482,25 @@ const ChatViewport = ({ runtime, pendingPrompt, onClearPendingPrompt, starterPro
   );
 };
 
+const ActiveMessageListener = ({ threadId }: { threadId: string }) => {
+  const messages = useAuiState((s) => s.thread.messages);
+  const leafMessageId = messages.length > 0 ? messages[messages.length - 1].id : "EMPTY";
+  const messageIds = messages.map(m => m.id).join(",");
+  
+  useEffect(() => {
+    if (leafMessageId) {
+      const idsArray = messageIds ? messageIds.split(",") : [];
+      window.dispatchEvent(
+        new CustomEvent("ActiveMessageChanged", {
+          detail: { threadId, leafMessageId, messageIds: idsArray }
+        })
+      );
+    }
+  }, [leafMessageId, messageIds, threadId]);
+
+  return null;
+};
+
 // Main Export
 export const CustomChat: React.FC<CustomChatProps> = ({ 
   threadId, 
@@ -519,6 +538,7 @@ export const CustomChat: React.FC<CustomChatProps> = ({
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <EditorTools />
+      <ActiveMessageListener threadId={threadId} />
       <ChatViewport 
         runtime={runtime}
         pendingPrompt={pendingPrompt}

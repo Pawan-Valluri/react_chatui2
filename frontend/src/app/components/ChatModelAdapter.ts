@@ -23,6 +23,17 @@ export const createChatModelAdapter = (threadId: string, onThreadUpdated?: () =>
       textContent = userMessage.content[0].text || "";
     }
 
+    // Wait for document reconstruction to finish if jumping branches
+    if ((window as any)._documentSyncReady === false) {
+      await new Promise(resolve => {
+        const handler = () => {
+          window.removeEventListener("DocumentSyncReady", handler);
+          resolve(true);
+        };
+        window.addEventListener("DocumentSyncReady", handler);
+      });
+    }
+
     let response = await fetch(`/api/threads/${threadId}/messages`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
